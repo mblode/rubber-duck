@@ -1,0 +1,273 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme RubberDuck \
+            -derivedDataPath /tmp/rubber-duck-build
+
+      - name: Extract version from tag
+        id: ci-version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo '0.0.0')" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: |
+          xcodebuild -scheme RubberDuck \
+            -configuration Debug \
+            -derivedDataPath /tmp/rubber-duck-build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION=${{ steps.ci-version.outputs.VERSION }} \
+            build
+
+      - name: Test
+        run: |
+          xcodebuild -scheme RubberDuck \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/rubber-duck-build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            MARKETING_VERSION=${{ steps.ci-version.outputs.VERSION }} \
+            test
+
+  release:
+    name: Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Import code-signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme RubberDuck \
+            -derivedDataPath /tmp/rubber-duck-build
+
+      - name: Archive
+        run: |
+          xcodebuild -scheme RubberDuck \
+            -configuration Release \
+            -derivedDataPath /tmp/rubber-duck-build \
+            -archivePath /tmp/rubber-duck-build/RubberDuck.xcarchive \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
+            archive
+
+      - name: Export archive
+        run: |
+          cat > /tmp/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>developer-id</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>signingCertificate</key>
+              <string>Developer ID Application</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath /tmp/rubber-duck-build/RubberDuck.xcarchive \
+            -exportPath /tmp/rubber-duck-build/export \
+            -exportOptionsPlist /tmp/ExportOptions.plist
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Create DMG
+        run: |
+          create-dmg \
+            --volname "RubberDuck" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 128 \
+            --icon "RubberDuck.app" 150 190 \
+            --app-drop-link 450 190 \
+            --hide-extension "RubberDuck.app" \
+            --no-internet-enable \
+            "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
+            "/tmp/rubber-duck-build/export/RubberDuck.app" \
+          || test -f "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
+
+      - name: Notarize DMG
+        run: |
+          xcrun notarytool submit "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
+            --apple-id "${{ secrets.NOTARIZE_APPLE_ID }}" \
+            --password "${{ secrets.NOTARIZE_PASSWORD }}" \
+            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --wait
+
+      - name: Staple notarization ticket
+        run: xcrun stapler staple "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RubberDuck ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Installation
+
+            1. Download **RubberDuck-${{ steps.version.outputs.VERSION }}.dmg** below
+            2. Open the DMG and drag RubberDuck to Applications
+            3. Launch RubberDuck from Applications
+            4. Click the microphone icon in the menu bar and enter your OpenAI API key in Settings
+            5. Grant microphone and accessibility permissions when prompted
+
+            **Requires macOS 15.2 or later and an OpenAI API key.**
+          files: /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
+          draft: false
+          prerelease: false
+
+      - name: Generate Sparkle appcast
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          DMG_PATH="/tmp/rubber-duck-build/RubberDuck-${VERSION}.dmg"
+          DMG_SIZE=$(stat -f%z "${DMG_PATH}")
+          RELEASE_URL="https://github.com/mblode/rubber-duck/releases/tag/v${VERSION}"
+          DOWNLOAD_URL="https://github.com/mblode/rubber-duck/releases/download/v${VERSION}/RubberDuck-${VERSION}.dmg"
+          PUB_DATE=$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")
+          SPARKLE_SIGN_UPDATE="/tmp/rubber-duck-build/SourcePackages/artifacts/sparkle/Sparkle/bin/sign_update"
+
+          if [[ -z "${SPARKLE_PRIVATE_ED_KEY}" ]]; then
+            echo "SPARKLE_PRIVATE_ED_KEY secret is required for signed appcasts"
+            exit 1
+          fi
+
+          ED_SIGNATURE=$(printf '%s' "${SPARKLE_PRIVATE_ED_KEY}" | "${SPARKLE_SIGN_UPDATE}" --ed-key-file - -p "${DMG_PATH}")
+
+          cat > /tmp/appcast.xml << EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0"
+              xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
+              xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+              <title>RubberDuck</title>
+              <link>https://github.com/mblode/rubber-duck</link>
+              <description>RubberDuck updates</description>
+              <language>en</language>
+              <item>
+                <title>Version ${VERSION}</title>
+                <pubDate>${PUB_DATE}</pubDate>
+                <link>${RELEASE_URL}</link>
+                <sparkle:version>${VERSION}</sparkle:version>
+                <sparkle:shortVersionString>${VERSION}</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>15.2</sparkle:minimumSystemVersion>
+                <enclosure
+                  url="${DOWNLOAD_URL}"
+                  sparkle:version="${VERSION}"
+                  sparkle:shortVersionString="${VERSION}"
+                  sparkle:edSignature="${ED_SIGNATURE}"
+                  type="application/octet-stream"
+                  length="${DMG_SIZE}" />
+              </item>
+            </channel>
+          </rss>
+          EOF
+
+      - name: Publish appcast to main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+
+          cp /tmp/appcast.xml appcast.xml
+
+          if git diff --quiet -- appcast.xml; then
+            echo "appcast.xml unchanged"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          git commit -m "Update appcast for v${{ steps.version.outputs.VERSION }}"
+          git push origin main
+
+      - name: Compute DMG SHA256
+        id: sha
+        run: echo "SHA256=$(shasum -a 256 /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          SHA256="${{ steps.sha.outputs.SHA256 }}"
+
+          # Generate cask file
+          cat > /tmp/rubber-duck.rb << EOF
+          cask "rubber-duck" do
+            version "${VERSION}"
+            sha256 "${SHA256}"
+
+            url "https://github.com/mblode/rubber-duck/releases/download/v#{version}/RubberDuck-#{version}.dmg"
+            name "RubberDuck"
+            desc "macOS menu bar dictation app using OpenAI transcription"
+            homepage "https://github.com/mblode/rubber-duck"
+
+            depends_on macos: ">= :sequoia"
+            auto_updates true
+
+            app "RubberDuck.app"
+
+            zap trash: [
+              "~/Library/Preferences/co.blode.rubber-duck.plist",
+              "~/Library/Application Support/co.blode.rubber-duck",
+            ]
+          end
+          EOF
+
+          # Get current file SHA from tap repo
+          FILE_SHA=$(gh api repos/mblode/homebrew-tap/contents/Casks/rubber-duck.rb --jq '.sha')
+
+          # Push updated cask
+          gh api repos/mblode/homebrew-tap/contents/Casks/rubber-duck.rb \
+            -X PUT \
+            -f message="Update rubber-duck to ${VERSION}" \
+            -f content="$(base64 < /tmp/rubber-duck.rb)" \
+            -f sha="${FILE_SHA}"

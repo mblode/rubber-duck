@@ -1,0 +1,520 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 90;
+	objects = {
+
+/* Begin PBXBuildFile section */
+			3FB30F1B2F47A5760009EF71 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000001 /* KeyboardShortcuts */; };
+			3FB30F1C2F47A5760009EF71 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000003 /* LaunchAtLogin */; };
+			3FB30F1D2F47A5760009EF71 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000006 /* Sparkle */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CC000000000000A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 01607EF32D1883C80006DBE4 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 01607EFA2D1883C80006DBE4;
+			remoteInfo = RubberDuck;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		01607EFB2D1883C80006DBE4 /* RubberDuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RubberDuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CC000000000000B1 /* RubberDuckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RubberDuckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		01607F232D1898E10006DBE4 /* Exceptions for "RubberDuck" folder in "RubberDuck" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 01607EFA2D1883C80006DBE4 /* RubberDuck */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		01607EFD2D1883C80006DBE4 /* RubberDuck */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				01607F232D1898E10006DBE4 /* Exceptions for "RubberDuck" folder in "RubberDuck" target */,
+			);
+			path = RubberDuck;
+			sourceTree = "<group>";
+		};
+		CC000000000000C1 /* RubberDuckTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RubberDuckTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+			01607EF82D1883C80006DBE4 /* Frameworks */ = {
+				isa = PBXFrameworksBuildPhase;
+				files = (
+					3FB30F1D2F47A5760009EF71 /* Sparkle in Frameworks */,
+					3FB30F1C2F47A5760009EF71 /* LaunchAtLogin in Frameworks */,
+					3FB30F1B2F47A5760009EF71 /* KeyboardShortcuts in Frameworks */,
+				);
+			};
+		CC000000000000D1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		01607EF22D1883C80006DBE4 = {
+			isa = PBXGroup;
+			children = (
+				01607EFD2D1883C80006DBE4 /* RubberDuck */,
+				CC000000000000C1 /* RubberDuckTests */,
+				01607EFC2D1883C80006DBE4 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		01607EFC2D1883C80006DBE4 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				01607EFB2D1883C80006DBE4 /* RubberDuck.app */,
+				CC000000000000B1 /* RubberDuckTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		01607EFA2D1883C80006DBE4 /* RubberDuck */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 01607F0A2D1883C90006DBE4 /* Build configuration list for PBXNativeTarget "RubberDuck" */;
+			buildPhases = (
+				01607EF72D1883C80006DBE4 /* Sources */,
+				01607EF82D1883C80006DBE4 /* Frameworks */,
+				01607EF92D1883C80006DBE4 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				01607EFD2D1883C80006DBE4 /* RubberDuck */,
+			);
+			name = RubberDuck;
+				packageProductDependencies = (
+					AABB000000000001 /* KeyboardShortcuts */,
+					AABB000000000003 /* LaunchAtLogin */,
+					AABB000000000006 /* Sparkle */,
+				);
+			productName = RubberDuck;
+			productReference = 01607EFB2D1883C80006DBE4 /* RubberDuck.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CC000000000000E1 /* RubberDuckTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CC000000000000F1 /* Build configuration list for PBXNativeTarget "RubberDuckTests" */;
+			buildPhases = (
+				CC000000000000D2 /* Sources */,
+				CC000000000000D1 /* Frameworks */,
+				CC000000000000D3 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CC000000000000A2 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				CC000000000000C1 /* RubberDuckTests */,
+			);
+			name = RubberDuckTests;
+			productName = RubberDuckTests;
+			productReference = CC000000000000B1 /* RubberDuckTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		01607EF32D1883C80006DBE4 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					01607EFA2D1883C80006DBE4 = {
+						CreatedOnToolsVersion = 16.2;
+					};
+					CC000000000000E1 = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = 01607EFA2D1883C80006DBE4;
+					};
+				};
+			};
+			buildConfigurationList = 01607EF62D1883C80006DBE4 /* Build configuration list for PBXProject "RubberDuck" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 01607EF22D1883C80006DBE4;
+			minimizedProjectReferenceProxies = 1;
+				packageReferences = (
+					AABB000000000002 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */,
+					AABB000000000004 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */,
+					AABB000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				);
+			preferredProjectObjectVersion = 90;
+			productRefGroup = 01607EFC2D1883C80006DBE4 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				01607EFA2D1883C80006DBE4 /* RubberDuck */,
+				CC000000000000E1 /* RubberDuckTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		01607EF92D1883C80006DBE4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		CC000000000000D3 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		01607EF72D1883C80006DBE4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		CC000000000000D2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		CC000000000000A2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 01607EFA2D1883C80006DBE4 /* RubberDuck */;
+			targetProxy = CC000000000000A1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		01607F082D1883C90006DBE4 /* Debug configuration for PBXProject "RubberDuck" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 0.1.10;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		01607F092D1883C90006DBE4 /* Release configuration for PBXProject "RubberDuck" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = "$(MARKETING_VERSION)";
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				MARKETING_VERSION = 0.1.10;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		01607F0B2D1883C90006DBE4 /* Debug configuration for PBXNativeTarget "RubberDuck" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = RubberDuck/RubberDuck.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"RubberDuck/Preview Content\"";
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RubberDuck/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RubberDuck;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright 2026 Matthew Blode. All rights reserved.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "RubberDuck needs the microphone to capture your voice for dictation.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		01607F0C2D1883C90006DBE4 /* Release configuration for PBXNativeTarget "RubberDuck" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = RubberDuck/RubberDuck.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_ASSET_PATHS = "\"RubberDuck/Preview Content\"";
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RubberDuck/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = RubberDuck;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright 2026 Matthew Blode. All rights reserved.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "RubberDuck needs the microphone to capture your voice for dictation.";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CC000000000000F2 /* Debug configuration for PBXNativeTarget "RubberDuckTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuck";
+			};
+			name = Debug;
+		};
+		CC000000000000F3 /* Release configuration for PBXNativeTarget "RubberDuckTests" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.2;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuck";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		01607EF62D1883C80006DBE4 /* Build configuration list for PBXProject "RubberDuck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				01607F082D1883C90006DBE4 /* Debug configuration for PBXProject "RubberDuck" */,
+				01607F092D1883C90006DBE4 /* Release configuration for PBXProject "RubberDuck" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		01607F0A2D1883C90006DBE4 /* Build configuration list for PBXNativeTarget "RubberDuck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				01607F0B2D1883C90006DBE4 /* Debug configuration for PBXNativeTarget "RubberDuck" */,
+				01607F0C2D1883C90006DBE4 /* Release configuration for PBXNativeTarget "RubberDuck" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		CC000000000000F1 /* Build configuration list for PBXNativeTarget "RubberDuckTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CC000000000000F2 /* Debug configuration for PBXNativeTarget "RubberDuckTests" */,
+				CC000000000000F3 /* Release configuration for PBXNativeTarget "RubberDuckTests" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+			AABB000000000002 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/sindresorhus/KeyboardShortcuts";
+				requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+			AABB000000000004 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/sindresorhus/LaunchAtLogin-Modern";
+				requirement = {
+					kind = upToNextMajorVersion;
+					minimumVersion = 1.0.0;
+				};
+			};
+			AABB000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+				isa = XCRemoteSwiftPackageReference;
+				repositoryURL = "https://github.com/sparkle-project/Sparkle";
+				requirement = {
+					kind = upToNextMajorVersion;
+					minimumVersion = 2.8.1;
+				};
+			};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+			AABB000000000001 /* KeyboardShortcuts */ = {
+				isa = XCSwiftPackageProductDependency;
+			package = AABB000000000002 /* XCRemoteSwiftPackageReference "KeyboardShortcuts" */;
+			productName = KeyboardShortcuts;
+		};
+			AABB000000000003 /* LaunchAtLogin */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = AABB000000000004 /* XCRemoteSwiftPackageReference "LaunchAtLogin-Modern" */;
+				productName = LaunchAtLogin;
+			};
+			AABB000000000006 /* Sparkle */ = {
+				isa = XCSwiftPackageProductDependency;
+				package = AABB000000000005 /* XCRemoteSwiftPackageReference "Sparkle" */;
+				productName = Sparkle;
+			};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 01607EF32D1883C80006DBE4 /* Project object */;
+}
