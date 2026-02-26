@@ -53,9 +53,67 @@ jobs:
             MARKETING_VERSION=${{ steps.ci-version.outputs.VERSION }} \
             test
 
+  cli-verify:
+    name: CLI Verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build, typecheck, lint
+        run: npm run build && npm run typecheck && npm run lint
+
+      - name: CLI verification
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          node dist/cli.js --help
+
+          TMP_HOME=$(mktemp -d)
+          export HOME="$TMP_HOME"
+          ln -s "$GITHUB_WORKSPACE/cli" "$TMP_HOME/repo"
+
+          node dist/cli.js sessions --all
+          node dist/cli.js attach ~/repo
+          node dist/cli.js sessions --all
+          node dist/cli.js follow --json duck-1 > "$TMP_HOME/follow.log" 2>&1 &
+          FOLLOW_PID=$!
+          sleep 2
+          kill -INT "$FOLLOW_PID" || true
+          wait "$FOLLOW_PID" || true
+
+          set +e
+          node dist/cli.js doctor > "$TMP_HOME/doctor.log" 2>&1
+          set -e
+
+          if ! grep -q "duck doctor" "$TMP_HOME/doctor.log"; then
+            cat "$TMP_HOME/doctor.log"
+            echo "duck doctor output missing header"
+            exit 1
+          fi
+
+          APP_DIR="$TMP_HOME/Library/Application Support/RubberDuck"
+          if [ -f "$APP_DIR/duck-daemon.pid" ]; then
+            DAEMON_PID="$(cat "$APP_DIR/duck-daemon.pid")"
+            kill "$DAEMON_PID" || true
+          fi
+
   release:
     name: Release
-    needs: build-and-test
+    needs: [build-and-test, cli-verify]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-15
     steps:

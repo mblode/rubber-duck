@@ -1,13 +1,24 @@
 {
   "fill" : {
-    "solid" : "extended-gray:0.00000,1.00000"
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
   },
   "groups" : [
     {
       "layers" : [
         {
-          "image-name" : "logo.svg",
-          "name" : "logo"
+          "blend-mode" : "normal",
+          "fill" : {
+            "solid" : "srgb:0.96471,0.77647,0.38431,1.00000"
+          },
+          "image-name" : "Subtract.svg",
+          "name" : "Subtract",
+          "position" : {
+            "scale" : 2.6,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
         }
       ],
       "shadow" : {
@@ -21,8 +32,9 @@
     }
   ],
   "supported-platforms" : {
-    "squares" : [
-      "macOS"
-    ]
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
   }
 }

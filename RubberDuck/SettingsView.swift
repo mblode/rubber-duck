@@ -2,6 +2,32 @@ import SwiftUI
 import KeyboardShortcuts
 import LaunchAtLogin
 
+// MARK: - Voice Agent Settings
+
+enum VoiceAgentVoice: String, CaseIterable, Identifiable {
+    case marin, cedar, alloy, ash, ballad, coral, echo, sage, shimmer, verse
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+}
+
+enum VoiceAgentModel: String, CaseIterable, Identifiable {
+    case realtimePreview = "gpt-4o-mini-realtime-preview"
+    case realtime = "gpt-4o-realtime-preview"
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .realtimePreview: return "GPT-4o Mini Realtime"
+        case .realtime: return "GPT-4o Realtime"
+        }
+    }
+}
+
+enum VADEagerness: String, CaseIterable, Identifiable {
+    case low, medium, high
+    var id: String { rawValue }
+    var displayName: String { rawValue.capitalized }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var transcriptionManager: TranscriptionManager
     @EnvironmentObject private var audioManager: AudioManager
@@ -9,6 +35,12 @@ struct SettingsView: View {
     @State private var apiKey: String = ""
     @State private var apiKeyError: String?
     @FocusState private var isAPIKeyFieldFocused: Bool
+
+    @AppStorage("voiceAgentVoice") private var selectedVoice: VoiceAgentVoice = .marin
+    @AppStorage("voiceAgentModel") private var selectedModel: VoiceAgentModel = .realtimePreview
+    @AppStorage("vadEagerness") private var vadEagerness: VADEagerness = .medium
+    @AppStorage("safeModeEnabled") private var safeModeEnabled = false
+    @AppStorage("autoAbortOnBargeIn") private var autoAbortOnBargeIn = true
 
     var body: some View {
         Form {
@@ -44,14 +76,36 @@ struct SettingsView: View {
                 Text("OpenAI API Key")
             }
 
-            Section("Transcription") {
-                Picker("Language", selection: $transcriptionManager.selectedLanguage) {
-                    ForEach(TranscriptionLanguage.allCases) { lang in
-                        Text(lang.displayName).tag(lang)
+            Section("Voice Agent") {
+                Picker("Voice", selection: $selectedVoice) {
+                    ForEach(VoiceAgentVoice.allCases) { voice in
+                        Text(voice.displayName).tag(voice)
                     }
                 }
 
-                Text("Specifying a language improves accuracy and reduces latency.")
+                Picker("Model", selection: $selectedModel) {
+                    ForEach(VoiceAgentModel.allCases) { model in
+                        Text(model.displayName).tag(model)
+                    }
+                }
+
+                Picker("VAD Eagerness", selection: $vadEagerness) {
+                    ForEach(VADEagerness.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+
+                Toggle("Safe mode", isOn: $safeModeEnabled)
+                Text("Disable write/edit tools and restrict shell commands to a safe allowlist.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Toggle("Auto-abort on barge-in", isOn: $autoAbortOnBargeIn)
+                Text("When enabled, interrupting speech truncates the current assistant response.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Controls how quickly the model detects you've finished speaking.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -60,7 +114,7 @@ struct SettingsView: View {
                 LaunchAtLogin.Toggle("Launch at login")
 
                 HStack {
-                    Text("Hold to record")
+                    Text("Activate")
                     Spacer()
                     KeyboardShortcuts.Recorder("", name: .toggleRecording)
                 }
@@ -91,24 +145,6 @@ struct SettingsView: View {
                     }
                 }
 
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Auto-insert")
-                        Text("Pastes directly into the focused app")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if transcriptionManager.hasAccessibilityPermission {
-                        Label("Allowed", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                            .font(.callout)
-                    } else {
-                        Button("Allow") {
-                            transcriptionManager.openAccessibilitySettings()
-                        }
-                    }
-                }
             }
 
             Section("Updates") {
@@ -145,19 +181,17 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 430, height: 470)
+        .frame(width: 430, height: 400)
         .onAppear {
             apiKey = transcriptionManager.getAPIKey() ?? ""
             apiKeyError = nil
             audioManager.refreshMicrophonePermissionState()
-            transcriptionManager.recheckAccessibilityPermission()
         }
         .onDisappear {
             persistAPIKeyIfNeeded()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             audioManager.refreshMicrophonePermissionState()
-            transcriptionManager.recheckAccessibilityPermission()
         }
     }
 

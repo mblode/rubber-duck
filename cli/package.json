@@ -1,0 +1,70 @@
+{
+  "name": "rubber-duck",
+  "version": "0.0.1",
+  "description": "Voice-first coding companion CLI — attach repos, follow sessions, talk to your code",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "duck": "./dist/cli.js",
+    "duck-daemon": "./dist/daemon.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE.md"
+  ],
+  "scripts": {
+    "build": "tsdown && node scripts/fix-shebang.mjs",
+    "dev": "tsdown --watch",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify:ci": "npm run build && npm run typecheck && npm run lint && npm run validate:say-json-ui && node dist/cli.js --help",
+    "validate:say-json-ui": "bash scripts/validate-say-json-ui.sh",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "release": "npm run build && changeset publish",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format ."
+  },
+  "keywords": [],
+  "author": "Matthew Blode",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mblode/rubber-duck.git",
+    "directory": "cli"
+  },
+  "homepage": "https://github.com/mblode/rubber-duck#readme",
+  "bugs": {
+    "url": "https://github.com/mblode/rubber-duck/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "@mariozechner/pi-coding-agent": "^0.55.0",
+    "commander": "^14.0.3",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "@changesets/cli": "^2.29.0",
+    "@types/node": "^22.19.11",
+    "tsdown": "^0.12.0",
+    "typescript": "^5.8.0",
+    "ultracite": "^7.2.2",
+    "vitest": "^4.0.0"
+  }
+}

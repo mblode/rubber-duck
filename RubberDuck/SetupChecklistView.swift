@@ -14,12 +14,8 @@ struct SetupChecklistView: View {
         audioManager.microphonePermissionState == .granted
     }
 
-    private var isAccessibilityGranted: Bool {
-        transcriptionManager.hasAccessibilityPermission
-    }
-
     private var allStepsComplete: Bool {
-        isAPIKeySet && isMicrophoneGranted && isAccessibilityGranted
+        isAPIKeySet && isMicrophoneGranted
     }
 
     var body: some View {
@@ -51,15 +47,6 @@ struct SetupChecklistView: View {
             }
         }
 
-        if isAccessibilityGranted {
-            Label("Auto-insert permission allowed", systemImage: "checkmark.circle.fill")
-        } else {
-            Label("Auto-insert permission required", systemImage: "keyboard.badge.eye")
-            Button("Allow Pasting...") {
-                transcriptionManager.openAccessibilitySettings()
-            }
-        }
-
         Divider()
 
         if allStepsComplete {
@@ -87,7 +74,6 @@ struct SetupChecklistView: View {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             DispatchQueue.main.async {
                 audioManager.refreshMicrophonePermissionState()
-                transcriptionManager.recheckAccessibilityPermission()
             }
         }
     }

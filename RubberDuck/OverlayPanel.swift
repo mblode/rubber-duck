@@ -2,12 +2,11 @@ import AppKit
 import SwiftUI
 
 enum OverlayState: Equatable {
-    case recording
-    case transcribing(String)
-    case processing
-    case success
-    case copiedToClipboard
-    case tooShort
+    case listening
+    case thinking
+    case speaking
+    case toolRunning(String)
+    case error(String)
 }
 
 @MainActor
@@ -15,7 +14,7 @@ class OverlayPanelController {
     private var panel: NSPanel?
     private var hostingView: NSHostingView<OverlayContentView>?
     private var dismissTimer: Timer?
-    private var currentState: OverlayState = .recording
+    private var currentState: OverlayState = .listening
 
     static let shared = OverlayPanelController()
 
@@ -24,9 +23,11 @@ class OverlayPanelController {
     func show(state: OverlayState) {
         dismissTimer?.invalidate()
 
-        // Always update for transcribing deltas; skip redundant updates for other states.
-        if case .transcribing = state {
-            // Always update — partial text changes each time.
+        // Always update for states with changing text; skip redundant updates for other states.
+        if case .toolRunning = state {
+            // Always update — tool name may change.
+        } else if case .error = state {
+            // Always update — error message may change.
         } else if state == currentState, panel != nil {
             panel?.orderFrontRegardless()
             return
@@ -42,13 +43,14 @@ class OverlayPanelController {
         resizePanel()
         panel?.orderFrontRegardless()
 
-        if state == .success || state == .tooShort || state == .copiedToClipboard {
-            let delay: TimeInterval
+        let autoDismissDelay: TimeInterval? = {
             switch state {
-            case .tooShort: delay = 2.0
-            case .copiedToClipboard: delay = 2.5
-            default: delay = 1.5
+            case .error: return 3.0
+            default: return nil
             }
+        }()
+
+        if let delay = autoDismissDelay {
             dismissTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
                 Task { @MainActor in self?.dismiss() }
             }
@@ -60,18 +62,38 @@ class OverlayPanelController {
         panel?.orderOut(nil)
     }
 
+    private struct PanelLayout {
+        let size: NSSize
+        let origin: NSPoint
+
+        static let minWidth: CGFloat = 120
+        static let minHeight: CGFloat = 44
+        static let bottomOffset: CGFloat = 80
+    }
+
+    private func computeLayout(for hostingView: NSHostingView<OverlayContentView>) -> PanelLayout {
+        let idealSize = hostingView.fittingSize
+        let width = max(idealSize.width, PanelLayout.minWidth)
+        let height = max(idealSize.height, PanelLayout.minHeight)
+        let origin: NSPoint
+        if let screen = NSScreen.main {
+            let screenFrame = screen.visibleFrame
+            origin = NSPoint(x: screenFrame.midX - width / 2, y: screenFrame.minY + PanelLayout.bottomOffset)
+        } else {
+            origin = .zero
+        }
+        return PanelLayout(size: NSSize(width: width, height: height), origin: origin)
+    }
+
     private func createPanel() {
         let contentView = OverlayContentView(state: currentState)
         let hosting = NSHostingView(rootView: contentView)
+        let layout = computeLayout(for: hosting)
 
-        let idealSize = hosting.fittingSize
-        let panelWidth = max(idealSize.width, 120)
-        let panelHeight = max(idealSize.height, 44)
-
-        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        hosting.frame = NSRect(origin: .zero, size: layout.size)
 
         let panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(origin: .zero, size: layout.size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -85,13 +107,7 @@ class OverlayPanelController {
         panel.isMovableByWindowBackground = false
         panel.ignoresMouseEvents = true
         panel.contentView = hosting
-
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - (panelWidth / 2)
-            let y = screenFrame.minY + 80
-            panel.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+        panel.setFrameOrigin(layout.origin)
 
         self.panel = panel
         self.hostingView = hosting
@@ -99,21 +115,10 @@ class OverlayPanelController {
 
     private func resizePanel() {
         guard let hosting = hostingView, let panel = panel else { return }
+        let layout = computeLayout(for: hosting)
 
-        let idealSize = hosting.fittingSize
-        let panelWidth = max(idealSize.width, 120)
-        let panelHeight = max(idealSize.height, 44)
-
-        hosting.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
-
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let x = screenFrame.midX - (panelWidth / 2)
-            let y = screenFrame.minY + 80
-            panel.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true, animate: false)
-        } else {
-            panel.setContentSize(NSSize(width: panelWidth, height: panelHeight))
-        }
+        hosting.frame = NSRect(origin: .zero, size: layout.size)
+        panel.setFrame(NSRect(origin: layout.origin, size: layout.size), display: true, animate: false)
     }
 }
 
@@ -123,45 +128,43 @@ struct OverlayContentView: View {
     var body: some View {
         HStack(spacing: 8) {
             switch state {
-            case .recording:
-                Image(systemName: "waveform")
-                    .foregroundStyle(.red)
+            case .listening:
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.blue)
                     .symbolEffect(.variableColor.iterative)
-                Text("Recording...")
+                Text("Listening...")
                     .foregroundStyle(.primary)
 
-            case .transcribing(let partialText):
+            case .thinking:
+                Image(systemName: "brain")
+                    .foregroundStyle(.orange)
+                    .symbolEffect(.pulse)
+                Text("Thinking...")
+                    .foregroundStyle(.primary)
+
+            case .speaking:
                 Image(systemName: "waveform")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.green)
                     .symbolEffect(.variableColor.iterative)
-                Text(partialText.suffix(60))
+                Text("Speaking...")
+                    .foregroundStyle(.primary)
+
+            case .toolRunning(let name):
+                Image(systemName: "terminal.fill")
+                    .foregroundStyle(.purple)
+                    .symbolEffect(.pulse)
+                Text("Running \(name)...")
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+            case .error(let msg):
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+                Text(String(msg.prefix(60)))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
-                    .truncationMode(.head)
-
-            case .processing:
-                ProgressView()
-                    .controlSize(.small)
-                Text("Transcribing...")
-                    .foregroundStyle(.primary)
-
-            case .success:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                Text("Done")
-                    .foregroundStyle(.primary)
-
-            case .copiedToClipboard:
-                Image(systemName: "doc.on.clipboard.fill")
-                    .foregroundStyle(.blue)
-                Text("Copied to clipboard")
-                    .foregroundStyle(.primary)
-
-            case .tooShort:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(.orange)
-                Text("Too short")
-                    .foregroundStyle(.primary)
+                    .truncationMode(.tail)
             }
         }
         .font(.system(size: 13, weight: .medium))
@@ -170,5 +173,28 @@ struct OverlayContentView: View {
         .frame(maxWidth: 400)
         .background(.ultraThinMaterial, in: Capsule())
         .fixedSize()
+    }
+}
+
+// MARK: - Overlay Presenting Protocol
+
+@MainActor
+protocol OverlayPresenting: AnyObject {
+    func show(state: OverlayState)
+    func dismiss()
+}
+
+@MainActor
+final class LiveOverlayPresenter: OverlayPresenting {
+    static let shared = LiveOverlayPresenter()
+
+    private init() {}
+
+    func show(state: OverlayState) {
+        OverlayPanelController.shared.show(state: state)
+    }
+
+    func dismiss() {
+        OverlayPanelController.shared.dismiss()
     }
 }

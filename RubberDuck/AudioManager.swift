@@ -1,6 +1,13 @@
 import Foundation
 import AVFoundation
 import AppKit
+import os
+
+enum AudioConstants {
+    static let sampleRate: Double = 24000
+    static let captureBufferSize: AVAudioFrameCount = 1024
+    static let channels: AVAudioChannelCount = 1
+}
 
 enum MicrophonePermissionState: String {
     case notDetermined
@@ -29,20 +36,18 @@ enum MicrophonePermissionState: String {
 }
 
 class AudioManager: NSObject, ObservableObject {
-    @Published var isRecording = false
+    @Published var isStreaming = false
     @Published private(set) var microphonePermissionState: MicrophonePermissionState = .notDetermined
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
-    private var audioFile: AVAudioFile?
-    private var recordingURL: URL?
     private var converter: AVAudioConverter?
     private var volumeMeter: AVAudioMixerNode?
     private let audioQueue = DispatchQueue(label: "co.blode.rubber-duck.audio")
-    private var _isRecordingOnAudioQueue = false
+    private var streamingChunkCallback: ((String) -> Void)?
+    private let isStreamingFlag = OSAllocatedUnfairLock(initialState: false)
 
     override init() {
         super.init()
-        setupRecordingURL()
         refreshMicrophonePermissionState()
     }
 
@@ -101,14 +106,6 @@ class AudioManager: NSObject, ObservableObject {
         }
     }
 
-    private func setupRecordingURL() {
-        let tempPath = FileManager.default.temporaryDirectory
-        let url = tempPath.appendingPathComponent("rubber-duck-recording.wav")
-        recordingURL = url
-        try? FileManager.default.removeItem(at: url)
-        logInfo("AudioManager: Recording temp file path set to \(url.path)")
-    }
-
     private func setupAudioEngine() {
         logInfo("AudioManager: Setting up audio engine")
 
@@ -136,8 +133,8 @@ class AudioManager: NSObject, ObservableObject {
         }
 
         let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                        sampleRate: 24000,
-                                        channels: 1,
+                                        sampleRate: AudioConstants.sampleRate,
+                                        channels: AudioConstants.channels,
                                         interleaved: false)!
 
         logDebug("AudioManager: Input format: \(inputFormat)")
@@ -147,68 +144,74 @@ class AudioManager: NSObject, ObservableObject {
         audioEngine.connect(inputNode, to: volumeMeter, format: inputFormat)
         audioEngine.prepare()
 
-        volumeMeter.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] (buffer, time) in
+        volumeMeter.installTap(onBus: 0, bufferSize: AudioConstants.captureBufferSize, format: inputFormat) { [weak self] (buffer, time) in
             self?.audioQueue.async { [weak self] in
-                guard let self = self,
-                      let recordingURL = self.recordingURL,
-                      self._isRecordingOnAudioQueue else { return }
+                guard let self = self, self.isStreamingFlag.withLock({ $0 }) else { return }
 
-                var convertedBuffer: AVAudioPCMBuffer?
-
-                if self.converter == nil && inputFormat != whisperFormat {
-                    self.converter = AVAudioConverter(from: inputFormat, to: whisperFormat)
-                }
-
-                if let converter = self.converter {
-                    let frameCount = AVAudioFrameCount(Float(buffer.frameLength) * Float(24000) / Float(inputFormat.sampleRate))
-                    convertedBuffer = AVAudioPCMBuffer(pcmFormat: whisperFormat,
-                                                     frameCapacity: frameCount)
-                    convertedBuffer?.frameLength = frameCount
-
-                    var error: NSError?
-                    var consumed = false
-                    let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
-                        if consumed {
-                            outStatus.pointee = .noDataNow
-                            return nil
-                        }
-                        consumed = true
-                        outStatus.pointee = .haveData
-                        return buffer
-                    }
-
-                    converter.convert(to: convertedBuffer!,
-                                    error: &error,
-                                    withInputFrom: inputBlock)
-
-                    if error != nil {
-                        logError("AudioManager: Conversion error: \(error!)")
-                        return
-                    }
-                } else {
-                    convertedBuffer = buffer
-                }
-
+                let convertedBuffer = self.convertToTargetFormat(buffer: buffer, inputFormat: inputFormat, targetFormat: whisperFormat)
                 guard let finalBuffer = convertedBuffer else { return }
+                guard let base64String = self.pcmBufferToBase64(finalBuffer) else { return }
 
-                if self.audioFile == nil {
-                    do {
-                        self.audioFile = try AVAudioFile(forWriting: recordingURL,
-                                                        settings: whisperFormat.settings)
-                        logInfo("AudioManager: Created new audio file at \(recordingURL)")
-                    } catch {
-                        logError("AudioManager: Failed to create audio file: \(error)")
-                        return
-                    }
-                }
-
-                do {
-                    try self.audioFile?.write(from: finalBuffer)
-                } catch {
-                    logError("AudioManager: Failed to write buffer: \(error)")
+                let callback = self.streamingChunkCallback
+                DispatchQueue.global(qos: .userInitiated).async {
+                    callback?(base64String)
                 }
             }
         }
+    }
+
+    private func convertToTargetFormat(buffer: AVAudioPCMBuffer, inputFormat: AVAudioFormat, targetFormat: AVAudioFormat) -> AVAudioPCMBuffer? {
+        if converter == nil && inputFormat != targetFormat {
+            converter = AVAudioConverter(from: inputFormat, to: targetFormat)
+        }
+
+        guard let converter = converter else {
+            return buffer
+        }
+
+        let frameCount = AVAudioFrameCount(Float(buffer.frameLength) * Float(targetFormat.sampleRate) / Float(inputFormat.sampleRate))
+        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
+            return nil
+        }
+        convertedBuffer.frameLength = frameCount
+
+        var error: NSError?
+        var consumed = false
+        let inputBlock: AVAudioConverterInputBlock = { inNumPackets, outStatus in
+            if consumed {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
+
+        if let error = error {
+            logError("AudioManager: Conversion error: \(error)")
+            return nil
+        }
+
+        return convertedBuffer
+    }
+
+    private func pcmBufferToBase64(_ buffer: AVAudioPCMBuffer) -> String? {
+        guard let floatData = buffer.floatChannelData else { return nil }
+        let frameCount = Int(buffer.frameLength)
+        let samples = floatData[0]
+
+        var int16Data = Data(count: frameCount * 2)
+        int16Data.withUnsafeMutableBytes { rawBuffer in
+            let int16Buffer = rawBuffer.bindMemory(to: Int16.self)
+            for i in 0..<frameCount {
+                let clamped = Int16(max(-32768, min(32767, Int32(samples[i] * 32767.0))))
+                int16Buffer[i] = clamped.littleEndian
+            }
+        }
+
+        return int16Data.base64EncodedString()
     }
 
     private func cleanupAudioEngine() {
@@ -219,124 +222,62 @@ class AudioManager: NSObject, ObservableObject {
         inputNode = nil
         volumeMeter = nil
         converter = nil
-        audioFile = nil
     }
 
-    // MARK: - Recording Control
+    // MARK: - Streaming Control
 
-    func startRecording(completion: ((Bool) -> Void)? = nil) {
+    func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)? = nil) {
         if !Thread.isMainThread {
             DispatchQueue.main.async { [weak self] in
-                self?.startRecording(completion: completion)
+                self?.startStreaming(onChunk: onChunk, onError: onError)
             }
             return
         }
 
         ensureMicrophonePermission { [weak self] granted in
-            guard let self = self else {
-                completion?(false)
-                return
-            }
-
-            guard granted else {
-                self.isRecording = false
-                logInfo("AudioManager: Microphone permission not granted")
-                completion?(false)
-                return
-            }
-
-            self.startRecordingAuthorized(completion: completion)
-        }
-    }
-
-    private func startRecordingAuthorized(completion: ((Bool) -> Void)? = nil) {
-        logInfo("AudioManager: Starting recording")
-        setupAudioEngine()
-
-        audioQueue.async { [weak self] in
             guard let self = self else { return }
 
-            guard let audioEngine = self.audioEngine else {
-                logError("AudioManager: No audio engine available")
-                self._isRecordingOnAudioQueue = false
-                DispatchQueue.main.async {
-                    completion?(false)
-                }
+            guard granted else {
+                logInfo("AudioManager: Microphone permission not granted for streaming")
                 return
             }
 
-            try? FileManager.default.removeItem(at: self.recordingURL!)
-            self.audioFile = nil
+            self.streamingChunkCallback = onChunk
+            self.setupAudioEngine()
 
-            do {
-                self._isRecordingOnAudioQueue = true
-                try audioEngine.start()
-                DispatchQueue.main.async {
-                    self.isRecording = true
-                    completion?(true)
+            self.audioQueue.async { [weak self] in
+                guard let self = self, let audioEngine = self.audioEngine else {
+                    logError("AudioManager: No audio engine available for streaming")
+                    return
                 }
-                logInfo("AudioManager: Recording started successfully")
-            } catch {
-                self._isRecordingOnAudioQueue = false
-                logError("AudioManager: Failed to start recording: \(error.localizedDescription)")
-                DispatchQueue.main.async {
-                    completion?(false)
+
+                do {
+                    self.isStreamingFlag.withLock { $0 = true }
+                    try audioEngine.start()
+                    DispatchQueue.main.async {
+                        self.isStreaming = true
+                    }
+                    logInfo("AudioManager: Streaming started successfully")
+                } catch {
+                    self.isStreamingFlag.withLock { $0 = false }
+                    logError("AudioManager: Failed to start streaming: \(error.localizedDescription)")
+                    DispatchQueue.main.async { onError?(error) }
                 }
             }
         }
     }
 
-    func stopRecording() -> URL? {
-        logInfo("AudioManager: Stopping recording")
-        guard let recordingURL = recordingURL else {
-            logError("AudioManager: No recording URL available")
-            return nil
-        }
+    func stopStreaming() {
+        logInfo("AudioManager: Stopping streaming")
+        isStreaming = false
 
-        // First mark as not recording to prevent new audio data from being processed
-        isRecording = false
-
-        // Synchronously stop audio processing and release file resources
         audioQueue.sync { [weak self] in
-            self?._isRecordingOnAudioQueue = false
-            logInfo("AudioManager: Stopping audio engine and cleaning up")
+            self?.isStreamingFlag.withLock { $0 = false }
             self?.audioEngine?.stop()
             self?.volumeMeter?.removeTap(onBus: 0)
-            self?.audioFile = nil
-            // Clean up the engine for next recording
             self?.cleanupAudioEngine()
         }
 
-        // Verify the file exists before returning
-        if FileManager.default.fileExists(atPath: recordingURL.path) {
-            logInfo("AudioManager: Recording saved successfully at \(recordingURL)")
-            return recordingURL
-        }
-        logError("AudioManager: Recording file not found at \(recordingURL)")
-        return nil
-    }
-
-    // MARK: - M4A Compression
-
-    func convertToM4A(wavURL: URL) async -> URL? {
-        let m4aURL = wavURL.deletingPathExtension().appendingPathExtension("m4a")
-        try? FileManager.default.removeItem(at: m4aURL)
-
-        let asset = AVURLAsset(url: wavURL)
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
-            logError("AudioManager: Failed to create export session")
-            return nil
-        }
-
-        do {
-            try await exportSession.export(to: m4aURL, as: .m4a)
-            let wavSize = (try? FileManager.default.attributesOfItem(atPath: wavURL.path)[.size] as? Int64) ?? 0
-            let m4aSize = (try? FileManager.default.attributesOfItem(atPath: m4aURL.path)[.size] as? Int64) ?? 0
-            logInfo("AudioManager: Compressed \(wavSize) bytes WAV → \(m4aSize) bytes M4A (\(m4aSize > 0 ? Int(100 - (m4aSize * 100 / wavSize)) : 0)% smaller)")
-            return m4aURL
-        } catch {
-            logError("AudioManager: M4A export failed: \(error.localizedDescription)")
-            return nil
-        }
+        streamingChunkCallback = nil
     }
 }

@@ -1,4 +1,4 @@
-SCHEME = RubberDuck
+SCHEME = Commandment
 CONFIGURATION = Release
 DERIVED_DATA = /tmp/rubber-duck-build
 ARCHIVE_PATH = $(DERIVED_DATA)/RubberDuck.xcarchive
@@ -11,7 +11,7 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 CODESIGN_IDENTITY ?= Developer ID Application
 TEAM_ID ?= $(APPLE_TEAM_ID)
 
-.PHONY: build archive export dmg notarize clean
+.PHONY: build test cli-build cli-test archive export dmg notarize clean
 
 build:
 	xcodebuild -scheme $(SCHEME) \
@@ -27,6 +27,12 @@ test:
 		-derivedDataPath $(DERIVED_DATA) \
 		MARKETING_VERSION=$(VERSION) \
 		test
+
+cli-build:
+	cd cli && npm run build
+
+cli-test:
+	cd cli && npm run test -- --passWithNoTests
 
 archive:
 	xcodebuild -scheme $(SCHEME) \

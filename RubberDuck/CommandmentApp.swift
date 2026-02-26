@@ -16,7 +16,9 @@ struct RubberDuckApp: App {
     @StateObject private var hotkeyManager: HotkeyManager
     @StateObject private var transcriptionManager: TranscriptionManager
     @StateObject private var updateManager: UpdateManager
-    @StateObject private var coordinator: RecordingCoordinator
+    @StateObject private var voiceCoordinator: VoiceSessionCoordinator
+    @StateObject private var playbackManager: AudioPlaybackManager
+    @StateObject private var workspaceManager: WorkspaceManager
 
     // Initialize Logger early
     private let logger = Logger.shared
@@ -28,7 +30,7 @@ struct RubberDuckApp: App {
 
         // Template icons adapt correctly to light/dark menu bar appearances.
         image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
+        image.size = NSSize(width: 20, height: 18)
         return image
     }()
 
@@ -40,6 +42,10 @@ struct RubberDuckApp: App {
         let transcription = TranscriptionManager()
         let hotkey = HotkeyManager()
         let updater = UpdateManager()
+        let playback = AudioPlaybackManager()
+        let rtClient = RealtimeClient()
+        rtClient.instructions = SystemPrompt.voiceCodingAssistant
+        let workspaces = WorkspaceManager()
         SettingsWindowController.shared.configure(
             transcriptionManager: transcription,
             audioManager: audio,
@@ -47,17 +53,31 @@ struct RubberDuckApp: App {
         )
 
         // Initialize coordinator with the same instances
-        let coordinator = RecordingCoordinator(
+        let voiceCoord = VoiceSessionCoordinator(
             audioManager: audio,
-            transcriptionManager: transcription
+            playbackManager: playback,
+            realtimeClient: rtClient
         )
+        workspaces.onActiveWorkspaceChanged = { path in
+            guard let path else { return }
+            voiceCoord.setWorkspace(path)
+        }
+        workspaces.onActiveSessionChanged = { session in
+            voiceCoord.setSession(session)
+        }
+        if let activeWorkspaceURL = workspaces.activeWorkspace?.url {
+            voiceCoord.setWorkspace(activeWorkspaceURL)
+        }
+        voiceCoord.setSession(workspaces.activeSession)
 
         // Now create the StateObjects
         _audioManager = StateObject(wrappedValue: audio)
         _hotkeyManager = StateObject(wrappedValue: hotkey)
         _transcriptionManager = StateObject(wrappedValue: transcription)
         _updateManager = StateObject(wrappedValue: updater)
-        _coordinator = StateObject(wrappedValue: coordinator)
+        _voiceCoordinator = StateObject(wrappedValue: voiceCoord)
+        _playbackManager = StateObject(wrappedValue: playback)
+        _workspaceManager = StateObject(wrappedValue: workspaces)
 
         scheduleFirstLaunchSettingsRevealIfNeeded(transcriptionManager: transcription)
 
@@ -72,7 +92,8 @@ struct RubberDuckApp: App {
             MenuBarView(audioManager: audioManager,
                        hotkeyManager: hotkeyManager,
                        transcriptionManager: transcriptionManager,
-                       updateManager: updateManager)
+                       updateManager: updateManager,
+                       workspaceManager: workspaceManager)
         } label: {
             menuBarIcon
         }
