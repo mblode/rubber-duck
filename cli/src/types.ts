@@ -275,19 +275,78 @@ export type DaemonMethod =
   | "extension_ui_response"
   | "say"
   | "sessions"
-  | "use"
-  | "new"
   | "abort"
   | "doctor"
-  | "export"
   | "get_state"
   | "ping";
 
-export interface DaemonRequest {
-  id: string;
-  method: DaemonMethod;
-  params: Record<string, unknown>;
+// ---------------------------------------------------------------------------
+// Typed Daemon Request Params (per method)
+// ---------------------------------------------------------------------------
+
+// biome-ignore lint/suspicious/noEmptyInterface: Typed placeholder for discriminated union map
+export interface PingParams {}
+
+export interface AttachParams {
+  path?: string;
 }
+
+export interface FollowParams {
+  sessionId?: string;
+}
+
+// biome-ignore lint/suspicious/noEmptyInterface: Typed placeholder for discriminated union map
+export interface UnfollowParams {}
+
+export interface ExtensionUiResponseParams {
+  cancelled?: boolean;
+  confirmed?: boolean;
+  id: string;
+  sessionId?: string;
+  value?: unknown;
+}
+
+export interface SayParams {
+  message: string;
+  sessionId?: string;
+}
+
+export interface SessionsParams {
+  all?: boolean;
+  workspaceId?: string;
+}
+
+export interface AbortParams {
+  sessionId?: string;
+}
+
+// biome-ignore lint/suspicious/noEmptyInterface: Typed placeholder for discriminated union map
+export interface DoctorParams {}
+
+export interface GetStateParams {
+  sessionId?: string;
+}
+
+export interface DaemonRequestMap {
+  abort: AbortParams;
+  attach: AttachParams;
+  doctor: DoctorParams;
+  extension_ui_response: ExtensionUiResponseParams;
+  follow: FollowParams;
+  get_state: GetStateParams;
+  ping: PingParams;
+  say: SayParams;
+  sessions: SessionsParams;
+  unfollow: UnfollowParams;
+}
+
+export type DaemonRequest = {
+  [M in DaemonMethod]: {
+    id: string;
+    method: M;
+    params: DaemonRequestMap[M];
+  };
+}[DaemonMethod];
 
 export interface DaemonResponse {
   data?: Record<string, unknown>;
@@ -356,4 +415,31 @@ export interface DoctorCheck {
   message: string;
   name: string;
   status: "ok" | "warn" | "fail";
+}
+
+// ---------------------------------------------------------------------------
+// App History & Renderer Types
+// ---------------------------------------------------------------------------
+
+export interface AppHistoryEvent {
+  appEventType: string;
+  metadata?: Record<string, string>;
+  sessionID?: string;
+  text?: string;
+  timestamp?: string;
+  type: "app_history_event";
+}
+
+export type RendererPiEvent = PiEvent | AppHistoryEvent;
+
+export interface EventRenderer {
+  cleanup(): void;
+  render(event: RendererPiEvent): void | Promise<void>;
+}
+
+export interface RendererOptions {
+  color: boolean;
+  json: boolean;
+  showThinking: boolean;
+  verbose: boolean;
 }

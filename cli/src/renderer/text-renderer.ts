@@ -1,15 +1,18 @@
-import { createColorStyles } from "./colors.js";
-import { formatTag, formatToolArgs, formatUserMessage } from "./format.js";
-import { ToolTracker } from "./tool-tracker.js";
 import type {
   EventRenderer,
   RendererOptions,
   RendererPiEvent,
   ToolContent,
-} from "./types.js";
+} from "../types.js";
+import { createColorStyles } from "./colors.js";
+import { formatTag, formatToolArgs, formatUserMessage } from "./format.js";
+import { ToolTracker } from "./tool-tracker.js";
 
 type StreamState = "idle" | "text" | "thinking";
 
+const STATUS_DEBOUNCE_MS = 200;
+const USER_LABEL = "User:";
+const DUCK_LABEL = "Duck:";
 const write = (s: string) => process.stdout.write(s);
 
 function extractToolText(content: ToolContent): string {
@@ -26,6 +29,15 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   let state: StreamState = "idle";
   const tracker = new ToolTracker();
   const streamedTools = new Set<string>();
+  let lastStatusMessage: string | null = null;
+  let statusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function flushPendingStatus(): void {
+    if (statusDebounceTimer !== null) {
+      clearTimeout(statusDebounceTimer);
+      statusDebounceTimer = null;
+    }
+  }
 
   function ensureIdle(): void {
     if (state !== "idle") {
@@ -34,7 +46,14 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     }
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Event rendering is intentionally centralized for deterministic terminal output ordering.
   function renderEvent(event: RendererPiEvent): void {
+    if (
+      !(event.type === "extension_ui_request" && event.method === "setStatus")
+    ) {
+      flushPendingStatus();
+    }
+
     switch (event.type) {
       case "agent_start":
         break;
@@ -46,7 +65,9 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         break;
 
       case "turn_start":
-        write(`${text.dim("--- turn ---")}\n`);
+        if (options.verbose) {
+          write(`${text.dim("--- turn ---")}\n`);
+        }
         break;
 
       case "turn_end":
@@ -56,7 +77,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         if (event.message.role === "user") {
           const body = formatUserMessage(event.message);
           if (body) {
-            write(`${tag.you(formatTag("you"))} ${text.you(body)}\n\n`);
+            write(`${tag.you(USER_LABEL)} ${text.you(body)}\n\n`);
           }
         }
         break;
@@ -173,11 +194,16 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         renderUiRequest(event);
         break;
 
+      case "app_history_event":
+        renderAppHistoryEvent(event);
+        break;
+
       default:
         break;
     }
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming deltas require explicit state-machine handling for readability.
   function renderMessageUpdate(
     event: Extract<RendererPiEvent, { type: "message_update" }>
   ): void {
@@ -186,14 +212,20 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     switch (delta.type) {
       case "text_start":
         ensureIdle();
-        write(`${tag.assistant(formatTag("assistant"))} `);
+        write(`${tag.assistant(DUCK_LABEL)} `);
         state = "text";
         break;
 
       case "text_delta":
-        if (state === "text" && delta.delta) {
-          write(text.assistant(delta.delta));
+        if (!delta.delta) {
+          break;
         }
+        if (state !== "text") {
+          ensureIdle();
+          write(`${tag.assistant(DUCK_LABEL)} `);
+          state = "text";
+        }
+        write(text.assistant(delta.delta));
         break;
 
       case "text_end":
@@ -254,11 +286,12 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     const lines = newContent.split("\n");
     for (const line of lines) {
       if (line) {
-        write(`${tag.output(formatTag("output"))} ${text.output(line)}\n`);
+        write(`  ${text.dim(line)}\n`);
       }
     }
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Tool end handling needs explicit branches for streamed/non-streamed and error/success output.
   function renderToolEnd(
     event: Extract<RendererPiEvent, { type: "tool_execution_end" }>
   ): void {
@@ -276,7 +309,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       if (errorText) {
         for (const line of errorText.split("\n")) {
           if (line) {
-            write(`${tag.output(formatTag("output"))} ${text.error(line)}\n`);
+            write(`  ${text.error(line)}\n`);
           }
         }
       }
@@ -285,7 +318,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       if (resultText) {
         for (const line of resultText.split("\n")) {
           if (line) {
-            write(`${tag.output(formatTag("output"))} ${text.output(line)}\n`);
+            write(`  ${text.dim(line)}\n`);
           }
         }
       }
@@ -298,8 +331,24 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     event: Extract<RendererPiEvent, { type: "extension_ui_request" }>
   ): void {
     switch (event.method) {
-      case "notify":
       case "setStatus":
+        // Internal agent status (e.g. "Thinking...") — show only in verbose mode.
+        // In default mode these are noise; streaming text is sufficient feedback.
+        if (options.verbose && event.message) {
+          if (event.message === lastStatusMessage) {
+            break;
+          }
+          flushPendingStatus();
+          const statusMessage = event.message;
+          statusDebounceTimer = setTimeout(() => {
+            statusDebounceTimer = null;
+            lastStatusMessage = statusMessage;
+            write(`${tag.ui(formatTag("ui"))} ${text.output(statusMessage)}\n`);
+          }, STATUS_DEBOUNCE_MS);
+        }
+        break;
+
+      case "notify":
       case "setWidget":
       case "setTitle":
       case "set_editor_text":
@@ -325,14 +374,95 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     }
   }
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: App history maps multiple event types to distinct terminal output shapes.
+  function renderAppHistoryEvent(
+    event: Extract<RendererPiEvent, { type: "app_history_event" }>
+  ): void {
+    ensureIdle();
+
+    switch (event.appEventType) {
+      case "assistant_audio":
+        if (event.text) {
+          write(`${tag.assistant(DUCK_LABEL)} ${text.assistant(event.text)}\n`);
+        }
+        break;
+
+      case "assistant_text":
+        if (event.text) {
+          write(`${tag.assistant(DUCK_LABEL)} ${text.assistant(event.text)}\n`);
+        }
+        break;
+
+      case "user_text":
+        if (event.text) {
+          write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
+        }
+        break;
+
+      case "user_audio": {
+        if (event.text) {
+          write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
+          break;
+        }
+        const state = event.metadata?.state ?? "activity";
+        if (!options.verbose) {
+          if (state === "speech_stopped") {
+            write(`${tag.you(USER_LABEL)} ${text.you("[voice message]")}\n`);
+          }
+          break;
+        }
+        write(`${tag.you(formatTag("voice"))} ${text.you(state)}\n`);
+        break;
+      }
+
+      case "tool_call": {
+        const tool = event.metadata?.tool;
+        const state = event.metadata?.state;
+        const callId = event.metadata?.call_id;
+        const args = event.metadata?.arguments;
+
+        const details: string[] = [];
+        if (state) {
+          details.push(state);
+        }
+        if (tool) {
+          details.push(`tool=${tool}`);
+        }
+        if (callId) {
+          details.push(`call=${callId}`);
+        }
+        if (args) {
+          details.push(`args=${args}`);
+        }
+
+        const message =
+          details.length > 0 ? details.join(" ") : "tool activity";
+        write(`${tag.tool(formatTag("tool:voice"))} ${text.output(message)}\n`);
+        break;
+      }
+
+      default:
+        if (options.verbose) {
+          const label = event.appEventType || "event";
+          const body = event.text || "";
+          write(
+            `${tag.ui(formatTag("app"))} ${text.output(`${label} ${body}`.trim())}\n`
+          );
+        }
+        break;
+    }
+  }
+
   return {
     render(event: RendererPiEvent): void {
       renderEvent(event);
     },
     cleanup(): void {
+      flushPendingStatus();
       ensureIdle();
       tracker.reset();
       streamedTools.clear();
+      lastStatusMessage = null;
     },
   };
 }

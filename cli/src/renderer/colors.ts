@@ -13,9 +13,14 @@ export function defaultColorEnabled(): boolean {
   return !process.env.NO_COLOR && (process.stdout.isTTY ?? false);
 }
 
+export function createColorize(
+  enabled: boolean
+): (format: Parameters<typeof styleText>[0], value: string) => string {
+  return (format, value) => color(enabled, format, value);
+}
+
 export function createColorStyles(enabled: boolean): {
   tag: {
-    abort: (value: string) => string;
     assistant: (value: string) => string;
     compact: (value: string) => string;
     error: (value: string) => string;
@@ -49,7 +54,6 @@ export function createColorStyles(enabled: boolean): {
       tool: (value: string) => color(enabled, ["bold", "cyan"], value),
       output: (value: string) => color(enabled, "dim", value),
       error: (value: string) => color(enabled, ["bold", "red"], value),
-      abort: (value: string) => color(enabled, ["bold", "yellow"], value),
       steer: (value: string) => color(enabled, ["bold", "yellow"], value),
       retry: (value: string) => color(enabled, "yellow", value),
       compact: (value: string) => color(enabled, "dim", value),
@@ -68,8 +72,3 @@ export function createColorStyles(enabled: boolean): {
     },
   };
 }
-
-const defaultStyles = createColorStyles(defaultColorEnabled());
-
-export const tag = defaultStyles.tag;
-export const text = defaultStyles.text;

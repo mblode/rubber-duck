@@ -1,0 +1,10 @@
+project: RubberDuck.xcodeproj
+schemes:
+  - Commandment
+targets:
+  - RubberDuck
+retain_public: false
+retain_objc_accessible: true
+retain_swift_ui_previews: true
+clean_build: false
+disable_update_check: true

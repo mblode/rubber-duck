@@ -3,6 +3,10 @@ import { createInterface } from "node:readline";
 import {
   PI_BINARY,
   PI_COMMAND_TIMEOUT_MS,
+  PI_DEFAULT_THINKING,
+  PI_THINKING_OVERRIDE_ENV,
+  PI_TOOLS,
+  resolveDefaultPiModel,
   SESSIONS_DIR,
 } from "../constants.js";
 import type { PiEvent, PiRpcRequest, PiRpcResponse } from "../types.js";
@@ -15,7 +19,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export type PiEventHandler = (event: PiEvent) => void;
+type PiEventHandler = (event: PiEvent) => void;
 
 export class PiProcess {
   private readonly process: ChildProcess;
@@ -40,7 +44,19 @@ export class PiProcess {
       "rpc",
       "--session-dir",
       options.sessionDir ?? SESSIONS_DIR,
+      "--tools",
+      PI_TOOLS.join(","),
     ];
+    // Pi CLI does not expose sandbox/approval flags. We explicitly enable the
+    // full built-in tool set so the agent has full codebase inspection access.
+    const piModel = resolveDefaultPiModel();
+    if (piModel) {
+      args.push("--model", piModel);
+    }
+    const piThinking =
+      process.env[PI_THINKING_OVERRIDE_ENV]?.trim() ?? PI_DEFAULT_THINKING;
+    args.push("--thinking", piThinking);
+
     if (options.sessionFile) {
       args.push("--session", options.sessionFile);
     }

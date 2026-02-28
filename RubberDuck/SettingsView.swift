@@ -11,25 +11,30 @@ enum VoiceAgentVoice: String, CaseIterable, Identifiable {
 }
 
 enum VoiceAgentModel: String, CaseIterable, Identifiable {
-    case realtimePreview = "gpt-4o-mini-realtime-preview"
-    case realtime = "gpt-4o-realtime-preview"
+    case realtimeMini = "gpt-realtime-mini"
+    case realtime = "gpt-realtime-1.5"
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .realtimePreview: return "GPT-4o Mini Realtime"
-        case .realtime: return "GPT-4o Realtime"
+        case .realtimeMini: return "GPT Realtime Mini"
+        case .realtime: return "GPT Realtime 1.5"
         }
     }
 }
 
 enum VADEagerness: String, CaseIterable, Identifiable {
-    case low, medium, high
+    case low, medium, high, auto
     var id: String { rawValue }
-    var displayName: String { rawValue.capitalized }
+    var displayName: String {
+        switch self {
+        case .auto: return "Auto"
+        default: return rawValue.capitalized
+        }
+    }
 }
 
 struct SettingsView: View {
-    @EnvironmentObject private var transcriptionManager: TranscriptionManager
+    @EnvironmentObject private var configManager: AppConfigManager
     @EnvironmentObject private var audioManager: AudioManager
     @EnvironmentObject private var updateManager: UpdateManager
     @State private var apiKey: String = ""
@@ -37,8 +42,8 @@ struct SettingsView: View {
     @FocusState private var isAPIKeyFieldFocused: Bool
 
     @AppStorage("voiceAgentVoice") private var selectedVoice: VoiceAgentVoice = .marin
-    @AppStorage("voiceAgentModel") private var selectedModel: VoiceAgentModel = .realtimePreview
-    @AppStorage("vadEagerness") private var vadEagerness: VADEagerness = .medium
+    @AppStorage("voiceAgentModel") private var selectedModel: VoiceAgentModel = .realtime
+    @AppStorage("vadEagerness") private var vadEagerness: VADEagerness = .low
     @AppStorage("safeModeEnabled") private var safeModeEnabled = false
     @AppStorage("autoAbortOnBargeIn") private var autoAbortOnBargeIn = true
 
@@ -105,7 +110,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("Controls how quickly the model detects you've finished speaking.")
+                Text("Controls how eagerly the model detects you've finished speaking. Low is recommended to reduce false interruptions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -172,18 +177,19 @@ struct SettingsView: View {
 
             Section {
                 HStack {
-                    Text("RubberDuck")
-                        .foregroundStyle(.secondary)
+                    Button("Show Logs") {
+                        Logger.shared.openLogFile()
+                    }
                     Spacer()
                     Link("GitHub", destination: URL(string: "https://github.com/mblode/rubber-duck")!)
+                        .font(.callout)
                 }
-                .font(.callout)
             }
         }
         .formStyle(.grouped)
         .frame(width: 430, height: 400)
         .onAppear {
-            apiKey = transcriptionManager.getAPIKey() ?? ""
+            apiKey = configManager.getAPIKey() ?? ""
             apiKeyError = nil
             audioManager.refreshMicrophonePermissionState()
         }
@@ -218,9 +224,9 @@ struct SettingsView: View {
 
     private func persistAPIKeyIfNeeded() {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let existingKey = transcriptionManager.getAPIKey() ?? ""
+        let existingKey = configManager.getAPIKey() ?? ""
         guard trimmedKey != existingKey else { return }
-        let didPersist = transcriptionManager.setAPIKey(trimmedKey)
+        let didPersist = configManager.setAPIKey(trimmedKey)
         if didPersist {
             apiKey = trimmedKey
             apiKeyError = nil

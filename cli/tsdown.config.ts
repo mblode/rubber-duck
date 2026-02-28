@@ -1,5 +1,19 @@
 import { defineConfig } from "tsdown";
 
+const stripDefineFromRolldownInput = {
+  "build:before": ({
+    buildOptions,
+  }: {
+    buildOptions: Record<string, unknown>;
+  }) => {
+    // rolldown@1.0.0-rc.x rejects `define` as an input option.
+    // tsdown injects it there by default, causing warning spam per entry.
+    buildOptions.define = undefined;
+    // Same issue for `inject` in this toolchain combination.
+    buildOptions.inject = undefined;
+  },
+};
+
 export default defineConfig([
   {
     entry: { cli: "src/cli.ts" },
@@ -8,6 +22,7 @@ export default defineConfig([
     sourcemap: true,
     target: "node22",
     banner: { js: "#!/usr/bin/env node" },
+    hooks: stripDefineFromRolldownInput,
   },
   {
     entry: { index: "src/index.ts" },
@@ -15,6 +30,7 @@ export default defineConfig([
     dts: true,
     sourcemap: true,
     target: "node22",
+    hooks: stripDefineFromRolldownInput,
   },
   {
     entry: { daemon: "src/daemon/main.ts" },
@@ -23,5 +39,6 @@ export default defineConfig([
     sourcemap: true,
     target: "node22",
     banner: { js: "#!/usr/bin/env node" },
+    hooks: stripDefineFromRolldownInput,
   },
 ]);

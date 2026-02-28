@@ -1,6 +1,6 @@
 import type { PiEvent } from "../types.js";
 
-export type EventHandler = (sessionId: string, event: PiEvent) => void;
+type EventHandler = (sessionId: string, event: PiEvent) => void;
 
 export class EventBus {
   // sessionId -> Set of clientIds

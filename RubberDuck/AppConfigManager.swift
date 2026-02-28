@@ -1,7 +1,6 @@
 import Foundation
-import AppKit
 
-class TranscriptionManager: ObservableObject {
+class AppConfigManager: ObservableObject {
 
     @Published var statusMessage = ""
     @Published var setupGuideDismissed: Bool = UserDefaults.standard.bool(forKey: "setupGuideDismissed") {
@@ -17,35 +16,20 @@ class TranscriptionManager: ObservableObject {
 
     private func loadAPIKey() {
         // XCTest host startup can block indefinitely on keychain IPC.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+        if AppEnvironment.isRunningTests {
             apiKey = nil
-            logInfo("TranscriptionManager: Skipping keychain load in test environment")
+            logInfo("AppConfigManager: Skipping keychain load in test environment")
             return
         }
 
         // Try Keychain first
         if let keychainKey = KeychainManager.loadAPIKey() {
             apiKey = keychainKey
-            logInfo("TranscriptionManager: API key loaded from keychain")
+            logInfo("AppConfigManager: API key loaded from keychain")
             return
         }
 
-        // Migrate from UserDefaults if present
-        if let legacyKey = UserDefaults.standard.string(forKey: "OpenAIAPIKey"), !legacyKey.isEmpty {
-            logInfo("Migrating API key from UserDefaults to Keychain")
-            if KeychainManager.saveAPIKey(legacyKey) {
-                apiKey = legacyKey
-                UserDefaults.standard.removeObject(forKey: "OpenAIAPIKey")
-                logInfo("TranscriptionManager: API key migration to keychain succeeded")
-            } else {
-                // Keep legacy key available for current session instead of dropping it.
-                apiKey = legacyKey
-                logError("TranscriptionManager: API key migration to keychain failed; legacy key retained in UserDefaults")
-            }
-            return
-        }
-
-        logInfo("TranscriptionManager: No API key configured")
+        logInfo("AppConfigManager: No API key configured")
     }
 
     @discardableResult

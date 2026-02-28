@@ -1,4 +1,4 @@
-import type { AgentMessage } from "./types.js";
+import type { AgentMessage } from "../types.js";
 
 const MAX_ARG_VALUE_LENGTH = 120;
 
@@ -14,7 +14,7 @@ export function formatToolArgs(args: Record<string, unknown>): string {
         str.length > MAX_ARG_VALUE_LENGTH
           ? `${str.slice(0, MAX_ARG_VALUE_LENGTH)}...`
           : str;
-      return `${key}=${JSON.stringify(truncated)}`;
+      return `${key}=${truncated}`;
     })
     .join(" ");
 }
@@ -30,11 +30,4 @@ export function formatUserMessage(message: AgentMessage): string {
       .join("\n");
   }
   return "";
-}
-
-export function truncate(str: string, maxLen: number): string {
-  if (str.length <= maxLen) {
-    return str;
-  }
-  return `${str.slice(0, maxLen)}...`;
 }

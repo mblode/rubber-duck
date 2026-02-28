@@ -1,5 +1,15 @@
 import Foundation
 
+/// Canonical tool name constants shared between definitions and handlers.
+enum ToolName {
+    static let readFile = "read_file"
+    static let writeFile = "write_file"
+    static let editFile = "edit_file"
+    static let bash = "bash"
+    static let grepSearch = "grep_search"
+    static let findFiles = "find_files"
+}
+
 struct ToolDefinitions {
     static func allTools() -> [[String: Any]] {
         return [
@@ -16,7 +26,7 @@ struct ToolDefinitions {
 
     private static let readFile: [String: Any] = [
         "type": "function",
-        "name": "read_file",
+        "name": ToolName.readFile,
         "description": "Read the contents of a file at the given path relative to the workspace root.",
         "parameters": [
             "type": "object",
@@ -27,12 +37,13 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["path"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 
     private static let writeFile: [String: Any] = [
         "type": "function",
-        "name": "write_file",
+        "name": ToolName.writeFile,
         "description": "Write content to a file, creating it and any parent directories if they don't exist. Overwrites existing content.",
         "parameters": [
             "type": "object",
@@ -47,12 +58,13 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["path", "content"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 
     private static let editFile: [String: Any] = [
         "type": "function",
-        "name": "edit_file",
+        "name": ToolName.editFile,
         "description": "Find and replace text in a file. The old_text must match exactly (including whitespace and indentation).",
         "parameters": [
             "type": "object",
@@ -71,6 +83,7 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["path", "old_text", "new_text"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 
@@ -78,7 +91,7 @@ struct ToolDefinitions {
 
     private static let bash: [String: Any] = [
         "type": "function",
-        "name": "bash",
+        "name": ToolName.bash,
         "description": "Run a shell command in the workspace directory and return its stdout and stderr. Use for builds, tests, git operations, or any CLI task.",
         "parameters": [
             "type": "object",
@@ -89,6 +102,7 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["command"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 
@@ -96,7 +110,7 @@ struct ToolDefinitions {
 
     private static let grepSearch: [String: Any] = [
         "type": "function",
-        "name": "grep_search",
+        "name": ToolName.grepSearch,
         "description": "Search file contents using a regex pattern. Returns matching lines with file paths and line numbers.",
         "parameters": [
             "type": "object",
@@ -115,12 +129,13 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["pattern"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 
     private static let findFiles: [String: Any] = [
         "type": "function",
-        "name": "find_files",
+        "name": ToolName.findFiles,
         "description": "Find files matching a glob pattern. Returns a list of matching file paths relative to the workspace root.",
         "parameters": [
             "type": "object",
@@ -135,6 +150,7 @@ struct ToolDefinitions {
                 ],
             ],
             "required": ["pattern"],
+            "additionalProperties": false,
         ] as [String: Any],
     ]
 }

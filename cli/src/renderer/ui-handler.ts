@@ -1,7 +1,7 @@
 import { confirm, isCancel, select, text } from "@clack/prompts";
-import type { ExtensionUiRequestEvent } from "./types.js";
+import type { ExtensionUiRequestEvent } from "../types.js";
 
-export interface UiResponseSender {
+interface UiResponseSender {
   send(response: {
     cancelled?: boolean;
     confirmed?: boolean;

@@ -2,6 +2,7 @@ import Foundation
 
 enum ConversationEventType: String, Codable {
     case userAudio = "user_audio"
+    case userText = "user_text"
     case assistantAudio = "assistant_audio"
     case toolCall = "tool_call"
     case assistantText = "assistant_text"

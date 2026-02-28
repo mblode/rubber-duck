@@ -30,7 +30,7 @@ protocol VoiceAudioPlayback: AnyObject {
     func startPlayback()
     func stopPlayback()
     func stopImmediately() -> Int
-    func enqueueAudio(base64Chunk: String)
+    func enqueueAudio(base64Chunk: String, itemId: String?, contentIndex: Int?)
 }
 
 extension AudioPlaybackManager: VoiceAudioPlayback {}
@@ -48,20 +48,24 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     private let audioManager: VoiceAudioManaging
     private let playbackManager: VoiceAudioPlayback
-    private let realtimeClient: RealtimeClient
+    private let realtimeClient: any RealtimeClientProtocol
     private let overlay: OverlayPresenting
     private let notificationCenter: NotificationCenter
     private let userDefaults: UserDefaults
-    private static let iso8601Formatter = ISO8601DateFormatter()
     private let fileManager: FileManager
+    private let cliMetadataReader: CLIMetadataReader
     private var cancellables = Set<AnyCancellable>()
-    private var toolCallHandler: ToolCallHandler?
+    private var toolOrchestrator: ToolOrchestrator?
     private var conversationHistory: ConversationHistory?
     private var autoAbortOnBargeIn = true
+    private var stickyDisconnectErrorMessage: String?
+    private let bargeInConfirmationDelaySeconds: TimeInterval
+    private var pendingBargeInWorkItem: DispatchWorkItem?
+    private var seenConversationItemIDs = Set<String>()
 
     // Track the current response's audio item for truncation on barge-in
     private var currentAudioItemId: String?
-    private var currentAudioContentIndex: Int = 0
+    private var currentAudioContentIndex: Int?
 
     // Track pending function calls from the current response
     private var pendingFunctionCalls: [(callId: String, name: String, arguments: String)] = []
@@ -69,10 +73,11 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     init(
         audioManager: VoiceAudioManaging,
         playbackManager: VoiceAudioPlayback,
-        realtimeClient: RealtimeClient,
+        realtimeClient: any RealtimeClientProtocol,
         notificationCenter: NotificationCenter = .default,
         overlay: OverlayPresenting? = nil,
         userDefaults: UserDefaults = .standard,
+        bargeInConfirmationDelaySeconds: TimeInterval = 0.35,
         fileManager: FileManager = .default
     ) {
         logInfo("VoiceSessionCoordinator: Initializing")
@@ -82,19 +87,13 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         self.notificationCenter = notificationCenter
         self.overlay = overlay ?? LiveOverlayPresenter.shared
         self.userDefaults = userDefaults
+        self.bargeInConfirmationDelaySeconds = max(0, bargeInConfirmationDelaySeconds)
         self.fileManager = fileManager
+        self.cliMetadataReader = CLIMetadataReader(
+            metadataURL: AppSupportPaths.metadataFileURL(fileManager: fileManager)
+        )
 
         realtimeClient.delegate = self
-
-        notificationCenter.publisher(for: NSNotification.Name("HotkeyKeyDown"))
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.handleHotkeyDown() }
-            .store(in: &cancellables)
-
-        notificationCenter.publisher(for: NSNotification.Name("HotkeyKeyUp"))
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.handleHotkeyUp() }
-            .store(in: &cancellables)
 
         notificationCenter.publisher(for: UserDefaults.didChangeNotification, object: userDefaults)
             .receive(on: DispatchQueue.main)
@@ -109,7 +108,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         let workspace = WorkspaceContext(rootPath: path)
         let executor = ToolExecutor(workspace: workspace)
         executor.safeMode = userDefaults.bool(forKey: "safeModeEnabled")
-        toolCallHandler = ToolCallHandler(toolExecutor: executor, realtimeClient: realtimeClient)
+        toolOrchestrator = ToolOrchestrator(toolExecutor: executor, resultSender: realtimeClient)
         realtimeClient.tools = ToolDefinitions.allTools()
         logInfo("VoiceSessionCoordinator: Workspace set to \(path.path)")
     }
@@ -118,6 +117,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         activeSessionID = session?.id
         guard let session else {
             conversationHistory = nil
+            seenConversationItemIDs.removeAll()
             logInfo("VoiceSessionCoordinator: Cleared active session")
             return
         }
@@ -127,9 +127,11 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             let history = try ConversationHistory(fileURL: historyURL, fileManager: fileManager)
             let recentEvents = try history.readRecent(limit: 50)
             conversationHistory = history
+            seenConversationItemIDs.removeAll()
             logInfo("VoiceSessionCoordinator: Active session set to \(session.name) (\(recentEvents.count) history events)")
         } catch {
             conversationHistory = nil
+            seenConversationItemIDs.removeAll()
             logError("VoiceSessionCoordinator: Failed to bind session history: \(error.localizedDescription)")
         }
     }
@@ -142,6 +144,12 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
+        if realtimeClient.connectionState != .disconnected {
+            logInfo("VoiceSessionCoordinator: Transport was not disconnected while idle, forcing reset before connect")
+            realtimeClient.disconnect()
+        }
+
+        stickyDisconnectErrorMessage = nil
         syncRuntimeSettings()
         setState(.connecting)
         overlay.show(state: .thinking)
@@ -149,6 +157,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func disconnectSession() {
+        cancelPendingBargeIn(reason: "disconnectSession")
+        stickyDisconnectErrorMessage = nil
         stopAudioStreaming()
         playbackManager.stopPlayback()
         realtimeClient.disconnect()
@@ -174,17 +184,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             }
             connectAndListen(apiKey: apiKey)
 
-        case .speaking:
-            // Barge-in: stop playback and let VAD handle the new speech
-            handleBargeIn()
-
-        case .listening:
-            // Already listening, nothing to do
-            break
-
-        case .connecting, .thinking, .toolRunning:
-            // Busy, ignore
-            break
+        case .listening, .speaking, .connecting, .thinking, .toolRunning:
+            // Toggle off: disconnect the session
+            disconnectSession()
         }
     }
 
@@ -195,22 +197,93 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     // MARK: - Barge-in
 
+    private func cancelPendingBargeIn(reason: String) {
+        guard let pendingBargeInWorkItem else { return }
+        pendingBargeInWorkItem.cancel()
+        self.pendingBargeInWorkItem = nil
+        logDebug("VoiceSessionCoordinator: Cancelled pending barge-in (\(reason))")
+    }
+
+    private func scheduleConfirmedBargeIn() {
+        guard sessionState == .speaking else { return }
+
+        if pendingBargeInWorkItem != nil {
+            return
+        }
+
+        guard bargeInConfirmationDelaySeconds > 0 else {
+            handleBargeIn()
+            return
+        }
+
+        let delayMs = Int(bargeInConfirmationDelaySeconds * 1000)
+        logDebug("VoiceSessionCoordinator: Speech started during playback, confirming for \(delayMs)ms before barge-in")
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingBargeInWorkItem = nil
+            guard self.sessionState == .speaking else { return }
+            self.handleBargeIn()
+        }
+
+        pendingBargeInWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + bargeInConfirmationDelaySeconds, execute: workItem)
+    }
+
     private func handleBargeIn() {
+        cancelPendingBargeIn(reason: "confirmed")
         logInfo("VoiceSessionCoordinator: Barge-in — stopping playback")
 
-        // Capture total scheduled before stopping (stopImmediately returns unplayed count)
-        let totalScheduled = (playbackManager as? AudioPlaybackManager)?.totalSamplesScheduled ?? 0
-        let unplayedSamples = playbackManager.stopImmediately()
-        let playedSamples = max(0, totalScheduled - unplayedSamples)
+        let snapshot: AudioPlaybackStopSnapshot
+        if let manager = playbackManager as? AudioPlaybackManager {
+            snapshot = manager.stopImmediatelySnapshot(itemId: currentAudioItemId, contentIndex: currentAudioContentIndex)
+        } else {
+            let unplayedSamples = playbackManager.stopImmediately()
+            let totalScheduledSamples = max(unplayedSamples, 0)
+            snapshot = AudioPlaybackStopSnapshot(
+                totalScheduledSamples: totalScheduledSamples,
+                totalPlayedSamples: 0,
+                totalUnplayedSamples: unplayedSamples,
+                itemScheduledSamples: 0,
+                itemPlayedSamples: 0,
+                itemUnplayedSamples: 0
+            )
+        }
 
-        if autoAbortOnBargeIn, let itemId = currentAudioItemId {
-            // Convert played samples to milliseconds
-            let audioEndMs = playedSamples * 1000 / Int(AudioConstants.sampleRate)
-            realtimeClient.truncateResponse(itemId: itemId, contentIndex: currentAudioContentIndex, audioEnd: audioEndMs)
-            logDebug("VoiceSessionCoordinator: Sent truncate for item \(itemId), audioEnd: \(audioEndMs)ms, unplayed: \(unplayedSamples) samples")
+        if autoAbortOnBargeIn,
+           let itemId = currentAudioItemId,
+           let contentIndex = currentAudioContentIndex,
+           snapshot.itemScheduledSamples > 0 {
+            let rawAudioEndMs = snapshot.itemPlayedSamples * 1000 / Int(AudioConstants.sampleRate)
+            let itemDurationMs = snapshot.itemScheduledSamples * 1000 / Int(AudioConstants.sampleRate)
+            let clampedAudioEndMs = min(max(rawAudioEndMs, 0), itemDurationMs)
+
+            if clampedAudioEndMs != rawAudioEndMs {
+                logDebug(
+                    "VoiceSessionCoordinator: Clamped truncate audioEnd from \(rawAudioEndMs)ms to \(clampedAudioEndMs)ms for item \(itemId)"
+                )
+            }
+
+            // Semantic VAD already cancels active responses server-side.
+            realtimeClient.truncateResponse(
+                itemId: itemId,
+                contentIndex: contentIndex,
+                audioEnd: clampedAudioEndMs,
+                sendCancel: false
+            )
+            logDebug(
+                "VoiceSessionCoordinator: Sent truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
+            )
         } else if !autoAbortOnBargeIn {
             logInfo("VoiceSessionCoordinator: Auto-abort on barge-in disabled, skipping truncate")
+        } else {
+            logDebug(
+                "VoiceSessionCoordinator: Skipping truncate on barge-in (itemId=\(currentAudioItemId ?? "none"), contentIndex=\(currentAudioContentIndex.map(String.init) ?? "none"), itemScheduled=\(snapshot.itemScheduledSamples))"
+            )
         }
+
+        // Re-arm the player node so the next response can be scheduled.
+        playbackManager.startPlayback()
 
         setState(.listening)
         overlay.show(state: .listening)
@@ -232,11 +305,26 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             },
             onError: { [weak self] error in
                 Task { @MainActor in
-                    self?.overlay.show(state: .error("Microphone error: \(error.localizedDescription)"))
-                    self?.disconnectSession()
+                    self?.handleAudioStartupFailure(error)
                 }
             }
         )
+    }
+
+    private func handleAudioStartupFailure(_ error: Error) {
+        let message = "Microphone error: \(error.localizedDescription)"
+        logError("VoiceSessionCoordinator: \(message)")
+        stickyDisconnectErrorMessage = message
+        stopAudioStreaming()
+        playbackManager.stopPlayback()
+
+        if realtimeClient.connectionState == .disconnected {
+            overlay.show(state: .error(message))
+            setState(.idle)
+            return
+        }
+
+        realtimeClient.disconnect()
     }
 
     private func stopAudioStreaming() {
@@ -248,32 +336,31 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     // MARK: - Settings
 
     private func syncRuntimeSettings() {
-        realtimeClient.voice = userDefaults.string(forKey: "voiceAgentVoice") ?? "marin"
-        realtimeClient.model = userDefaults.string(forKey: "voiceAgentModel") ?? "gpt-4o-mini-realtime-preview"
-        realtimeClient.vadEagerness = userDefaults.string(forKey: "vadEagerness") ?? "medium"
-
-        if userDefaults.object(forKey: "autoAbortOnBargeIn") == nil {
-            autoAbortOnBargeIn = true
-        } else {
-            autoAbortOnBargeIn = userDefaults.bool(forKey: "autoAbortOnBargeIn")
-        }
-
-        let safeModeEnabled = userDefaults.bool(forKey: "safeModeEnabled")
-        toolCallHandler?.setSafeMode(safeModeEnabled)
+        let settings = RuntimeSettingsLoader.load(from: userDefaults)
+        realtimeClient.voice = settings.voice
+        realtimeClient.model = settings.model
+        realtimeClient.vadEagerness = settings.vadEagerness
+        autoAbortOnBargeIn = settings.autoAbortOnBargeIn
+        toolOrchestrator?.setSafeMode(settings.safeModeEnabled)
     }
 
     // MARK: - Workspace Attachment
 
     private func maybeAttachWorkspaceFromCLIMetadata() {
-        guard workspacePath == nil else {
+        guard let selection = cliMetadataReader.loadSelection() else {
             return
         }
 
-        guard let path = loadWorkspaceFromCLIMetadata() else {
+        let targetPath = selection.workspaceURL.standardizedFileURL.path
+        let currentPath = workspacePath?.standardizedFileURL.path
+        if currentPath == targetPath {
+            syncSessionFromCLIMetadata(selection.session)
             return
         }
 
-        setWorkspace(path)
+        logInfo("VoiceSessionCoordinator: Syncing workspace from CLI metadata: \(targetPath)")
+        setWorkspace(selection.workspaceURL)
+        syncSessionFromCLIMetadata(selection.session)
     }
 
     private func appendHistoryEvent(type: ConversationEventType, text: String? = nil, metadata: [String: String]? = nil) {
@@ -297,40 +384,126 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
     }
 
-    private func loadWorkspaceFromCLIMetadata() -> URL? {
-        let metadataPath = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/RubberDuck/metadata.json")
-
-        guard let data = try? Data(contentsOf: metadataPath),
-              let metadata = try? JSONDecoder().decode(CLIMetadataFile.self, from: data) else {
+    private func extractUserText(from item: [String: Any]) -> String? {
+        guard (item["type"] as? String) == "message" else {
             return nil
         }
 
-        if let activeSessionId = metadata.activeVoiceSessionId,
-           let session = metadata.sessions.first(where: { $0.id == activeSessionId }),
-           let workspace = metadata.workspaces.first(where: { $0.id == session.workspaceId }) {
-            return URL(fileURLWithPath: workspace.path, isDirectory: true)
+        guard (item["role"] as? String) == "user" else {
+            return nil
         }
 
-        if let session = metadata.sessions.max(by: {
-            let d0 = $0.lastActiveAt.flatMap { Self.iso8601Formatter.date(from: $0) } ?? .distantPast
-            let d1 = $1.lastActiveAt.flatMap { Self.iso8601Formatter.date(from: $0) } ?? .distantPast
-            return d0 < d1
-        }),
-           let workspace = metadata.workspaces.first(where: { $0.id == session.workspaceId }) {
-            return URL(fileURLWithPath: workspace.path, isDirectory: true)
+        var parts: [String] = []
+        if let content = item["content"] as? [[String: Any]] {
+            for part in content {
+                if let text = part["text"] as? String {
+                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        parts.append(trimmed)
+                    }
+                }
+
+                if let transcript = part["transcript"] as? String {
+                    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        parts.append(trimmed)
+                    }
+                }
+
+                if let inputAudio = part["input_audio"] as? [String: Any],
+                   let transcript = inputAudio["transcript"] as? String {
+                    let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        parts.append(trimmed)
+                    }
+                }
+
+                if let inputText = part["input_text"] as? String {
+                    let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !trimmed.isEmpty {
+                        parts.append(trimmed)
+                    }
+                }
+            }
         }
 
-        if let workspace = metadata.workspaces.first {
-            return URL(fileURLWithPath: workspace.path, isDirectory: true)
+        if parts.isEmpty, let fallbackText = item["text"] as? String {
+            let trimmed = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                parts.append(trimmed)
+            }
         }
 
-        return nil
+        guard !parts.isEmpty else {
+            return nil
+        }
+
+        return parts.joined(separator: "\n")
+    }
+
+    private func markConversationItemSeen(_ itemID: String?) -> Bool {
+        guard let itemID, !itemID.isEmpty else {
+            return true
+        }
+
+        if seenConversationItemIDs.contains(itemID) {
+            return false
+        }
+        seenConversationItemIDs.insert(itemID)
+        if seenConversationItemIDs.count > 1024 {
+            seenConversationItemIDs.removeAll()
+        }
+        return true
+    }
+
+    private func appendUserTextIfNew(_ text: String, itemID: String?) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        guard markConversationItemSeen(itemID) else {
+            return
+        }
+
+        currentTranscript = trimmed
+        appendHistoryEvent(type: .userText, text: trimmed)
+    }
+
+    private func syncSessionFromCLIMetadata(_ session: CLIMetadataFile.Session?) {
+        guard let session else {
+            return
+        }
+
+        if activeSessionID == session.id, conversationHistory != nil {
+            return
+        }
+
+        let historyURL = AppSupportPaths.sessionsDirectoryURL(fileManager: fileManager)
+            .appendingPathComponent("\(session.id).jsonl", isDirectory: false)
+
+        do {
+            let history = try ConversationHistory(fileURL: historyURL, fileManager: fileManager)
+            let recentEvents = try history.readRecent(limit: 50)
+            activeSessionID = session.id
+            conversationHistory = history
+            seenConversationItemIDs.removeAll()
+            let sessionLabel = session.name ?? session.id
+            logInfo("VoiceSessionCoordinator: Synced active session from CLI metadata: \(sessionLabel) (\(recentEvents.count) history events)")
+        } catch {
+            logError("VoiceSessionCoordinator: Failed to sync CLI session history: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - RealtimeClientDelegate: Connection
 
-    func realtimeClientDidConnect(_ client: RealtimeClient) {
+    func realtimeClientDidConnect(_ client: any RealtimeClientProtocol) {
+        logInfo("VoiceSessionCoordinator: Transport connected, waiting for session readiness")
+        setState(.connecting)
+        overlay.show(state: .thinking)
+    }
+
+    func realtimeClientDidBecomeReady(_ client: any RealtimeClientProtocol) {
+        stickyDisconnectErrorMessage = nil
         logInfo("VoiceSessionCoordinator: Connected to Realtime API")
         setState(.listening)
         overlay.show(state: .listening)
@@ -338,11 +511,15 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         playbackManager.startPlayback()
     }
 
-    func realtimeClientDidDisconnect(_ client: RealtimeClient, error: Error?) {
+    func realtimeClientDidDisconnect(_ client: any RealtimeClientProtocol, error: Error?) {
+        cancelPendingBargeIn(reason: "transport_disconnect")
         stopAudioStreaming()
         playbackManager.stopPlayback()
 
-        if let error = error {
+        if let stickyError = stickyDisconnectErrorMessage {
+            logError("VoiceSessionCoordinator: Disconnected with preserved API error: \(stickyError)")
+            overlay.show(state: .error(stickyError))
+        } else if let error = error {
             logError("VoiceSessionCoordinator: Disconnected with error: \(error.localizedDescription)")
             overlay.show(state: .error("Disconnected: \(error.localizedDescription)"))
         } else {
@@ -352,11 +529,16 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         setState(.idle)
     }
 
-    func realtimeClient(_ client: RealtimeClient, didChangeState state: RealtimeConnectionState) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didChangeState state: RealtimeConnectionState) {
         switch state {
         case .reconnecting:
+            setState(.connecting)
             overlay.show(state: .thinking)
         case .disconnected:
+            cancelPendingBargeIn(reason: "state_disconnected")
+            currentAudioItemId = nil
+            currentAudioContentIndex = nil
+            pendingFunctionCalls = []
             setState(.idle)
         default:
             break
@@ -365,65 +547,99 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     // MARK: - RealtimeClientDelegate: Speech Detection
 
-    func realtimeClientDidDetectSpeechStarted(_ client: RealtimeClient) {
+    func realtimeClientDidDetectSpeechStarted(_ client: any RealtimeClientProtocol) {
         logDebug("VoiceSessionCoordinator: Speech started")
         appendHistoryEvent(type: .userAudio, metadata: ["state": "speech_started"])
 
         if sessionState == .speaking {
-            handleBargeIn()
+            scheduleConfirmedBargeIn()
         } else {
+            cancelPendingBargeIn(reason: "speech_started_non_speaking")
             setState(.listening)
             overlay.show(state: .listening)
         }
         currentTranscript = ""
     }
 
-    func realtimeClientDidDetectSpeechStopped(_ client: RealtimeClient) {
+    func realtimeClientDidDetectSpeechStopped(_ client: any RealtimeClientProtocol) {
         logDebug("VoiceSessionCoordinator: Speech stopped")
         appendHistoryEvent(type: .userAudio, metadata: ["state": "speech_stopped"])
+
+        if pendingBargeInWorkItem != nil, sessionState == .speaking {
+            cancelPendingBargeIn(reason: "speech_stopped_before_confirmation")
+            return
+        }
+
         setState(.thinking)
         overlay.show(state: .thinking)
     }
 
     // MARK: - RealtimeClientDelegate: Audio Response
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveAudioDelta base64Audio: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didUpdateActiveAudioOutput itemId: String?, contentIndex: Int?) {
+        if let itemId, !itemId.isEmpty {
+            currentAudioItemId = itemId
+        }
+        if let contentIndex {
+            currentAudioContentIndex = contentIndex
+        } else if currentAudioContentIndex == nil {
+            currentAudioContentIndex = 0
+        }
+    }
+
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioDelta base64Audio: String, itemId: String?, contentIndex: Int?) {
+        if let itemId, !itemId.isEmpty {
+            currentAudioItemId = itemId
+        }
+        if let contentIndex {
+            currentAudioContentIndex = contentIndex
+        } else if currentAudioContentIndex == nil {
+            currentAudioContentIndex = 0
+        }
+
         if sessionState != .speaking {
             setState(.speaking)
             overlay.show(state: .speaking)
         }
-        playbackManager.enqueueAudio(base64Chunk: base64Audio)
+        playbackManager.enqueueAudio(base64Chunk: base64Audio, itemId: currentAudioItemId, contentIndex: currentAudioContentIndex)
     }
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveAudioDone itemId: String) {
-        currentAudioItemId = itemId
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioDone itemId: String, contentIndex: Int?) {
+        if !itemId.isEmpty {
+            currentAudioItemId = itemId
+        }
+        if let contentIndex {
+            currentAudioContentIndex = contentIndex
+        }
         logDebug("VoiceSessionCoordinator: Audio output done for item \(itemId)")
     }
 
     // MARK: - RealtimeClientDelegate: Transcripts
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveAudioTranscriptDelta text: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioTranscriptDelta text: String) {
         lastAssistantTranscript += text
     }
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveAudioTranscriptDone text: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioTranscriptDone text: String) {
         lastAssistantTranscript = text
         appendHistoryEvent(type: .assistantAudio, text: text)
         logInfo("VoiceSessionCoordinator: Assistant said: \(text.prefix(80))...")
     }
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveTextDone text: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveTextDone text: String) {
         appendHistoryEvent(type: .assistantText, text: text)
     }
 
     // MARK: - RealtimeClientDelegate: Response Lifecycle
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveResponseCreated response: [String: Any]) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveResponseCreated response: [String: Any]) {
         lastAssistantTranscript = ""
         pendingFunctionCalls = []
+        currentAudioItemId = nil
+        currentAudioContentIndex = nil
     }
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveTypedResponseDone response: RealtimeResponseDone) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveTypedResponseDone response: RealtimeResponseDone) {
         // Check for function calls in the response output
         for call in response.functionCalls {
             pendingFunctionCalls.append(call)
@@ -447,14 +663,40 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
     }
 
+    func realtimeClientDidReceiveResponseDone(_ client: any RealtimeClientProtocol) {
+        if pendingFunctionCalls.isEmpty && sessionState != .toolRunning {
+            setState(.listening)
+            overlay.show(state: .listening)
+        }
+    }
+
+    func realtimeClientDidReceiveResponseCancelled(_ client: any RealtimeClientProtocol) {
+        pendingFunctionCalls = []
+        if sessionState == .thinking || sessionState == .speaking {
+            setState(.listening)
+            overlay.show(state: .listening)
+        }
+    }
+
     // MARK: - RealtimeClientDelegate: Function Calls
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveFunctionCallArgumentsDelta delta: String, callId: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallArgumentsDelta delta: String, callId: String) {
         // Could display partial arguments in overlay if needed
     }
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveFunctionCallArgumentsDone arguments: String, callId: String) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallArgumentsDone arguments: String, callId: String) {
         logDebug("VoiceSessionCoordinator: Function call arguments done for \(callId)")
+    }
+
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveInputAudioTranscriptionDone text: String, itemId: String?) {
+        appendUserTextIfNew(text, itemID: itemId)
+    }
+
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemCreated item: [String: Any]) {
+        guard let text = extractUserText(from: item) else {
+            return
+        }
+        appendUserTextIfNew(text, itemID: item["id"] as? String)
     }
 
     // MARK: - Tool Execution
@@ -466,7 +708,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
-        guard let handler = toolCallHandler else {
+        guard let handler = toolOrchestrator else {
             // No workspace set — return errors for all calls
             for call in pendingFunctionCalls {
                 logError("VoiceSessionCoordinator: No workspace, cannot execute \(call.name)")
@@ -480,6 +722,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                 )
             }
             pendingFunctionCalls = []
+            realtimeClient.requestModelResponse()
             return
         }
 
@@ -502,9 +745,57 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     // MARK: - RealtimeClientDelegate: Errors
 
-    func realtimeClient(_ client: RealtimeClient, didReceiveError error: [String: Any]) {
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveError error: [String: Any]) {
         let message = error["message"] as? String ?? "Unknown error"
-        logError("VoiceSessionCoordinator: API error: \(message)")
-        overlay.show(state: .error(message))
+        let retryable = (error["_retryable"] as? Bool) ?? false
+        let classification = (error["_classification"] as? String) ?? "unknown"
+        let code = (error["code"] as? String ?? "").lowercased()
+        let offendingEventType = (error["_offending_event_type"] as? String ?? "").lowercased()
+        logError("VoiceSessionCoordinator: API error (retryable=\(retryable), classification=\(classification)): \(message)")
+
+        let interruptionRaceError =
+            code == "response_cancel_not_active"
+            || code == "item_truncate_invalid_item_id"
+            || (code == "invalid_value"
+                && offendingEventType == "conversation.item.truncate"
+                && message.lowercased().contains("already shorter than"))
+            || (code == "invalid_value"
+                && offendingEventType == "conversation.item.truncate"
+                && message.lowercased().contains("item with item_id not found"))
+
+        if interruptionRaceError {
+            logInfo("VoiceSessionCoordinator: Ignoring benign interruption race error (\(code))")
+            currentAudioItemId = nil
+            currentAudioContentIndex = nil
+            if sessionState == .thinking || sessionState == .speaking {
+                setState(.listening)
+                overlay.show(state: .listening)
+            }
+            return
+        }
+
+        stopAudioStreaming()
+        playbackManager.stopPlayback()
+
+        if retryable {
+            setState(.connecting)
+            overlay.show(state: .thinking)
+            return
+        }
+
+        stickyDisconnectErrorMessage = message
+        realtimeClient.disconnect()
+    }
+}
+
+// MARK: - HotkeyManagerDelegate
+
+extension VoiceSessionCoordinator: HotkeyManagerDelegate {
+    func hotkeyManagerDidDetectKeyDown(_ manager: HotkeyManager) {
+        handleHotkeyDown()
+    }
+
+    func hotkeyManagerDidDetectKeyUp(_ manager: HotkeyManager) {
+        handleHotkeyUp()
     }
 }

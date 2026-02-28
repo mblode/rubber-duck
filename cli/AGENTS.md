@@ -1,12 +1,13 @@
 # rubber-duck CLI
 
-Voice-first coding companion CLI — attach repos, follow sessions, talk to your code.
+Voice-first coding companion CLI — one-command attach + stream, with `say` for prompts.
 
 ## Commands
 
 ```bash
 npm install              # setup (requires Node >= 22)
 npm run build            # tsdown → dist/ (cli.js, index.js, daemon.js)
+npm link                 # relink local `duck` binary after rebuild
 npm run dev              # tsdown --watch
 npm run test             # vitest run
 npm run typecheck        # tsc --noEmit
@@ -15,25 +16,27 @@ npm run lint:fix         # biome check --write
 npm run validate:say-json-ui  # deterministic Pi UI flow validation
 ```
 
+## Rebuild
+
+```bash
+cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" || true)
+# rebuild + relink CLI, then restart daemon so `duck` picks up new dist files
+```
+
 ## CLI Commands
 
 ```bash
-duck attach [path]              # Attach a directory and start a session
-duck follow [session]           # Stream live events (--json, --show-thinking, --verbose)
+duck [path]                     # Attach (or resume) workspace + stream events
 duck say <message...>           # Send a message to the active session
 duck sessions [--all]           # List sessions with status
-duck use <session>              # Set the active voice session
-duck new [--name <name>]        # Create a new session
-duck abort [session]            # Abort the current operation
 duck doctor                     # Check system health
-duck export [session] [--out]   # Export session to HTML
 ```
 
 ## Architecture
 
 ```
 src/
-  cli.ts                    # Commander entry point (9 subcommands)
+  cli.ts                    # Commander entry point (default action + core commands)
   index.ts                  # Public API exports (types + renderer + client)
   types.ts                  # All shared types: Pi RPC, daemon IPC, domain model
   constants.ts              # Paths: ~/Library/Application Support/RubberDuck/
@@ -41,15 +44,11 @@ src/
   client.ts                 # DaemonClient: Unix socket NDJSON client
   ensure-daemon.ts          # Auto-start daemon with exponential backoff
   commands/
-    attach.ts               # Resolve path → daemon attach → print session
-    follow.ts               # Subscribe to events → pipe through renderer
+    default.ts              # `duck [path]` attach/resume + follow
+    follow.ts               # Follow stream engine (Pi + app history)
     say.ts                  # Follow + send prompt → wait for agent_end
     sessions.ts             # Query sessions → format table
-    use.ts                  # Set active voice session
-    new.ts                  # Create new session in workspace
-    abort.ts                # Forward abort to Pi process
     doctor.ts               # Local + daemon health checks
-    export.ts               # Forward export_html to Pi
   daemon/
     main.ts                 # Entry point: PID check, init, listen, shutdown
     metadata-store.ts       # Atomic JSON persistence for workspaces/sessions
@@ -90,7 +89,7 @@ If that path exceeds Unix socket length limits, daemon and CLI fall back to
 - **Response**: `{ id, ok, data?, error? }`
 - **Event**: `{ event, sessionId, data }` (pushed to subscribed clients)
 
-Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`, `sessions`, `use`, `new`, `abort`, `doctor`, `export`, `get_state`
+Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`, `sessions`, `abort`, `doctor`, `get_state`
 
 ## Gotchas
 
@@ -105,3 +104,6 @@ Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`,
 - **Metadata path**: `~/Library/Application Support/RubberDuck/metadata.json` — atomic writes via rename.
 - **Runtime config/log**: daemon ensures `config.json` and appends lifecycle lines to `duck-daemon.log` in app support.
 - **UI extension requests**: `follow`/`say` auto-handle `extension_ui_request` via `@clack/prompts` and forward responses with daemon method `extension_ui_response`.
+- **Pi model config**: `RUBBER_DUCK_PI_MODEL` sets `--model` passed to Pi (e.g. `haiku`, `gpt-4o-mini`, `sonnet`). Without it, the daemon auto-detects a fast model from your API key: `ANTHROPIC_API_KEY` → `haiku`, `OPENAI_API_KEY` → `gpt-4o-mini`, `GOOGLE_API_KEY` → `gemini-2.0-flash`. Override with `piModel` in `config.json`.
+- **Pi thinking level**: `RUBBER_DUCK_PI_THINKING` sets `--thinking` level (default: `off` for speed). Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. Override with `piThinking` in `config.json`.
+- **`setStatus` messages**: Internal Pi status events (e.g. `Thinking…`) are suppressed in default output. Use `--verbose` to see them.

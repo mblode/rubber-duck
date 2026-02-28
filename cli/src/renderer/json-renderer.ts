@@ -1,4 +1,4 @@
-import type { EventRenderer, RendererPiEvent } from "./types.js";
+import type { EventRenderer, RendererPiEvent } from "../types.js";
 
 export function createJsonRenderer(): EventRenderer {
   return {

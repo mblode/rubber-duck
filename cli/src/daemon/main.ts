@@ -10,6 +10,8 @@ import {
   APP_SUPPORT,
   CONFIG_PATH,
   LOG_PATH,
+  PI_MODEL_OVERRIDE_ENV,
+  PI_THINKING_OVERRIDE_ENV,
   PID_PATH,
   SESSIONS_DIR,
   SOCKET_PATH,
@@ -23,6 +25,8 @@ import { SocketServer } from "./socket-server.js";
 
 interface DaemonConfig {
   logToStderr: boolean;
+  piModel?: string;
+  piThinking?: string;
   version: number;
 }
 
@@ -68,6 +72,9 @@ function loadDaemonConfig(): DaemonConfig {
         typeof parsed.logToStderr === "boolean"
           ? parsed.logToStderr
           : DEFAULT_DAEMON_CONFIG.logToStderr,
+      piModel: typeof parsed.piModel === "string" ? parsed.piModel : undefined,
+      piThinking:
+        typeof parsed.piThinking === "string" ? parsed.piThinking : undefined,
     };
 
     writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -106,6 +113,15 @@ async function main(): Promise<void> {
   mkdirSync(SESSIONS_DIR, { recursive: true });
   const config = loadDaemonConfig();
   const verbose = argsVerbose || config.logToStderr;
+
+  // Apply config.json model/thinking as env fallbacks (env var takes priority)
+  if (config.piModel && !process.env[PI_MODEL_OVERRIDE_ENV]) {
+    process.env[PI_MODEL_OVERRIDE_ENV] = config.piModel;
+  }
+  if (config.piThinking && !process.env[PI_THINKING_OVERRIDE_ENV]) {
+    process.env[PI_THINKING_OVERRIDE_ENV] = config.piThinking;
+  }
+
   logDaemon(`Daemon boot (pid ${process.pid})`, verbose);
 
   // Initialize components

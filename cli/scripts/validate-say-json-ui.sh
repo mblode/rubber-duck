@@ -191,9 +191,10 @@ npm run build >/dev/null
 
 DUCK_CMD=(node "${CLI_DIR}/dist/cli.js")
 
-"${DUCK_CMD[@]}" attach "${REPO_DIR}" >/dev/null
-
-if ! "${DUCK_CMD[@]}" say --json "validate extension ui flow" >"${SAY_STDOUT}" 2>"${SAY_STDERR}"; then
+if ! (
+  cd "${REPO_DIR}" &&
+    "${DUCK_CMD[@]}" say --json "validate extension ui flow"
+) >"${SAY_STDOUT}" 2>"${SAY_STDERR}"; then
   echo "duck say --json failed" >&2
   cat "${SAY_STDERR}" >&2 || true
   exit 1

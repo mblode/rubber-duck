@@ -44,7 +44,7 @@ export function registerSessionsCommand(program: Command): void {
 
         if (sessions.length === 0) {
           console.log(
-            styleText("dim", "No sessions. Run `duck attach` to start.")
+            styleText("dim", "No sessions yet. Run `duck` to start.")
           );
           client.close();
           return;

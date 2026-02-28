@@ -5,7 +5,7 @@ import AppKit
 final class SettingsWindowController {
     static let shared = SettingsWindowController()
 
-    private weak var transcriptionManager: TranscriptionManager?
+    private weak var configManager: AppConfigManager?
     private weak var audioManager: AudioManager?
     private weak var updateManager: UpdateManager?
     private var windowController: NSWindowController?
@@ -13,11 +13,11 @@ final class SettingsWindowController {
     private init() {}
 
     func configure(
-        transcriptionManager: TranscriptionManager,
+        configManager: AppConfigManager,
         audioManager: AudioManager,
         updateManager: UpdateManager
     ) {
-        self.transcriptionManager = transcriptionManager
+        self.configManager = configManager
         self.audioManager = audioManager
         self.updateManager = updateManager
 
@@ -26,7 +26,7 @@ final class SettingsWindowController {
            let storedUpdateManager = self.updateManager {
             window.contentViewController = NSHostingController(
                 rootView: SettingsView()
-                    .environmentObject(transcriptionManager)
+                    .environmentObject(configManager)
                     .environmentObject(storedAudioManager)
                     .environmentObject(storedUpdateManager)
             )
@@ -34,7 +34,7 @@ final class SettingsWindowController {
     }
 
     func show() {
-        guard let transcriptionManager, let audioManager, let updateManager else {
+        guard let configManager, let audioManager, let updateManager else {
             logError("SettingsWindowController: Missing managers")
             return
         }
@@ -44,7 +44,7 @@ final class SettingsWindowController {
             controller = existing
         } else {
             controller = makeWindowController(
-                transcriptionManager: transcriptionManager,
+                configManager: configManager,
                 audioManager: audioManager,
                 updateManager: updateManager
             )
@@ -57,13 +57,13 @@ final class SettingsWindowController {
     }
 
     private func makeWindowController(
-        transcriptionManager: TranscriptionManager,
+        configManager: AppConfigManager,
         audioManager: AudioManager,
         updateManager: UpdateManager
     ) -> NSWindowController {
         let hostingController = NSHostingController(
             rootView: SettingsView()
-                .environmentObject(transcriptionManager)
+                .environmentObject(configManager)
                 .environmentObject(audioManager)
                 .environmentObject(updateManager)
         )

@@ -5,7 +5,7 @@ import { SOCKET_PATH } from "../constants.js";
 import type { DaemonEvent, DaemonRequest, DaemonResponse } from "../types.js";
 import { generateId } from "../utils.js";
 
-export type RequestHandler = (
+type RequestHandler = (
   clientId: string,
   request: DaemonRequest
 ) => Promise<DaemonResponse>;

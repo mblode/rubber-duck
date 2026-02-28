@@ -7,26 +7,45 @@ extension KeyboardShortcuts.Name {
     static let openSettings = Self("openSettings", default: .init(.d, modifiers: [.option, .shift]))
 }
 
+protocol HotkeyManagerDelegate: AnyObject {
+    func hotkeyManagerDidDetectKeyDown(_ manager: HotkeyManager)
+    func hotkeyManagerDidDetectKeyUp(_ manager: HotkeyManager)
+}
+
 @MainActor
 class HotkeyManager: ObservableObject {
+    static let activateDefaultShortcut = KeyboardShortcuts.Shortcut(.d, modifiers: [.option])
+    static let settingsDefaultShortcut = KeyboardShortcuts.Shortcut(.d, modifiers: [.option, .shift])
+
     @Published var shortcutDisplay: String = ""
     @Published var settingsShortcutDisplay: String = ""
+    weak var delegate: HotkeyManagerDelegate?
     private var shortcutChangeObserver: NSObjectProtocol?
+    private var isToggleRecordingKeyHeld = false
 
     init() {
         logInfo("HotkeyManager: Initializing")
         updateShortcutDisplay()
         updateSettingsShortcutDisplay()
         observeShortcutChanges()
+        repairShortcutAssignmentsIfNeeded()
 
-        KeyboardShortcuts.onKeyDown(for: .toggleRecording) {
+        KeyboardShortcuts.onKeyDown(for: .toggleRecording) { [weak self] in
+            guard let self else { return }
+            guard !self.isToggleRecordingKeyHeld else {
+                logDebug("HotkeyManager: Ignoring repeated hotkey key down while held")
+                return
+            }
+            self.isToggleRecordingKeyHeld = true
             logDebug("HotkeyManager: Hotkey key down")
-            NotificationCenter.default.post(name: NSNotification.Name("HotkeyKeyDown"), object: nil)
+            self.delegate?.hotkeyManagerDidDetectKeyDown(self)
         }
 
-        KeyboardShortcuts.onKeyUp(for: .toggleRecording) {
+        KeyboardShortcuts.onKeyUp(for: .toggleRecording) { [weak self] in
+            guard let self else { return }
+            self.isToggleRecordingKeyHeld = false
             logDebug("HotkeyManager: Hotkey key up")
-            NotificationCenter.default.post(name: NSNotification.Name("HotkeyKeyUp"), object: nil)
+            self.delegate?.hotkeyManagerDidDetectKeyUp(self)
         }
 
         KeyboardShortcuts.onKeyUp(for: .openSettings) {
@@ -64,24 +83,24 @@ class HotkeyManager: ObservableObject {
                 } else {
                     self?.updateSettingsShortcutDisplay()
                 }
+                self?.repairShortcutAssignmentsIfNeeded()
             }
         }
     }
 
     func updateShortcutDisplay() {
-        if let shortcut = KeyboardShortcuts.getShortcut(for: .toggleRecording) {
-            shortcutDisplay = HotkeyManager.formattedShortcut(shortcut)
-        } else {
-            shortcutDisplay = "Not set"
-        }
+        shortcutDisplay = Self.displayString(for: .toggleRecording)
     }
 
     func updateSettingsShortcutDisplay() {
-        if let shortcut = KeyboardShortcuts.getShortcut(for: .openSettings) {
-            settingsShortcutDisplay = HotkeyManager.formattedShortcut(shortcut)
-        } else {
-            settingsShortcutDisplay = "Not set"
+        settingsShortcutDisplay = Self.displayString(for: .openSettings)
+    }
+
+    private static func displayString(for name: KeyboardShortcuts.Name) -> String {
+        if let shortcut = KeyboardShortcuts.getShortcut(for: name) {
+            return formattedShortcut(shortcut)
         }
+        return "Not set"
     }
 
     private static func formattedShortcut(_ shortcut: KeyboardShortcuts.Shortcut) -> String {
@@ -107,5 +126,66 @@ class HotkeyManager: ObservableObject {
         }
 
         return lhsShortcut == rhsShortcut
+    }
+
+    nonisolated static func repairedShortcuts(
+        toggleRecording: KeyboardShortcuts.Shortcut?,
+        openSettings: KeyboardShortcuts.Shortcut?
+    ) -> (
+        toggleRecording: KeyboardShortcuts.Shortcut,
+        openSettings: KeyboardShortcuts.Shortcut,
+        didRepair: Bool
+    ) {
+        var repairedToggle: KeyboardShortcuts.Shortcut
+        var repairedSettings: KeyboardShortcuts.Shortcut
+
+        if toggleRecording == nil
+            || openSettings == activateDefaultShortcut
+            || (toggleRecording != nil && openSettings != nil && toggleRecording == openSettings) {
+            repairedToggle = activateDefaultShortcut
+        } else {
+            repairedToggle = toggleRecording!
+        }
+
+        if openSettings == nil
+            || openSettings == activateDefaultShortcut
+            || openSettings == repairedToggle {
+            repairedSettings = settingsDefaultShortcut
+        } else {
+            repairedSettings = openSettings!
+        }
+
+        // Enforce a deterministic post-repair invariant: shortcuts must never match.
+        // When a final conflict remains, prefer restoring toggle recording to Option+D.
+        if repairedToggle == repairedSettings {
+            repairedToggle = activateDefaultShortcut
+            if repairedSettings == repairedToggle {
+                repairedSettings = settingsDefaultShortcut
+            }
+        }
+
+        let didRepair = repairedToggle != toggleRecording || repairedSettings != openSettings
+        return (repairedToggle, repairedSettings, didRepair)
+    }
+
+    private func repairShortcutAssignmentsIfNeeded() {
+        let currentToggle = KeyboardShortcuts.getShortcut(for: .toggleRecording)
+        let currentSettings = KeyboardShortcuts.getShortcut(for: .openSettings)
+
+        let repaired = Self.repairedShortcuts(
+            toggleRecording: currentToggle,
+            openSettings: currentSettings
+        )
+
+        guard repaired.didRepair else {
+            return
+        }
+
+        KeyboardShortcuts.setShortcut(repaired.toggleRecording, for: .toggleRecording)
+        KeyboardShortcuts.setShortcut(repaired.openSettings, for: .openSettings)
+
+        updateShortcutDisplay()
+        updateSettingsShortcutDisplay()
+        logInfo("HotkeyManager: Repaired shortcut assignments (Activate=Option+D, Open Settings=Option+Shift+D)")
     }
 }

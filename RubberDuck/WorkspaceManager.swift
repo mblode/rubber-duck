@@ -3,7 +3,6 @@ import Foundation
 @MainActor
 final class WorkspaceManager: ObservableObject {
     private static let cliMetadataVersion = 1
-    private static let iso8601Formatter = ISO8601DateFormatter()
 
     @Published private(set) var workspaces: [WorkspaceRecord] = []
     @Published private(set) var sessionsForActiveWorkspace: [SessionRecord] = []
@@ -21,10 +20,11 @@ final class WorkspaceManager: ObservableObject {
     var onActiveWorkspaceChanged: ((URL?) -> Void)?
     var onActiveSessionChanged: ((SessionRecord?) -> Void)?
 
-    private let store: SessionStore
+    private let store: any SessionRepository
     private let userDefaults: UserDefaults
     private let fileManager: FileManager
     private let cliMetadataPath: URL
+    private let cliMetadataReader: CLIMetadataReader
     private var cliMetadataSyncTimer: Timer?
     private var fileMonitor: DispatchSourceFileSystemObject?
 
@@ -33,15 +33,15 @@ final class WorkspaceManager: ObservableObject {
     }
 
     init(
-        store: SessionStore = SessionStore(),
+        store: any SessionRepository = SessionStore(),
         userDefaults: UserDefaults = .standard,
         fileManager: FileManager = .default
     ) {
         self.store = store
         self.userDefaults = userDefaults
         self.fileManager = fileManager
-        self.cliMetadataPath = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/RubberDuck/metadata.json")
+        self.cliMetadataPath = AppSupportPaths.metadataFileURL(fileManager: fileManager)
+        self.cliMetadataReader = CLIMetadataReader(metadataURL: cliMetadataPath)
         restoreState()
         startCLIMetadataFileMonitor()
     }
@@ -148,7 +148,7 @@ final class WorkspaceManager: ObservableObject {
                 return
             }
 
-            if let selection = loadCLISelectionFromMetadata() {
+            if let selection = cliMetadataReader.loadSelection() {
                 attachWorkspace(path: selection.workspaceURL, preferredSession: selection.session)
                 return
             }
@@ -191,7 +191,7 @@ final class WorkspaceManager: ObservableObject {
     }
 
     private func syncStateFromCLIMetadataIfNeeded() {
-        guard let selection = loadCLISelectionFromMetadata() else {
+        guard let selection = cliMetadataReader.loadSelection() else {
             return
         }
 
@@ -323,58 +323,9 @@ final class WorkspaceManager: ObservableObject {
 
     // MARK: - CLI Metadata Bridge
 
-    private struct CLIMetadataSelection {
-        let workspaceURL: URL
-        let session: CLIMetadataFile.Session?
-    }
-
-    private func loadCLISelectionFromMetadata() -> CLIMetadataSelection? {
-        guard let metadata = loadCLIMetadata() else {
-            return nil
-        }
-
-        if let activeSessionID = metadata.activeVoiceSessionId,
-           let session = metadata.sessions.first(where: { $0.id == activeSessionID }),
-           let workspace = metadata.workspaces.first(where: { $0.id == session.workspaceId }) {
-            return CLIMetadataSelection(
-                workspaceURL: URL(fileURLWithPath: workspace.path, isDirectory: true),
-                session: session
-            )
-        }
-
-        if let session = metadata.sessions.max(by: {
-            let d0 = $0.lastActiveAt.flatMap { Self.iso8601Formatter.date(from: $0) } ?? .distantPast
-            let d1 = $1.lastActiveAt.flatMap { Self.iso8601Formatter.date(from: $0) } ?? .distantPast
-            return d0 < d1
-        }),
-           let workspace = metadata.workspaces.first(where: { $0.id == session.workspaceId }) {
-            return CLIMetadataSelection(
-                workspaceURL: URL(fileURLWithPath: workspace.path, isDirectory: true),
-                session: session
-            )
-        }
-
-        if let workspace = metadata.workspaces.first {
-            return CLIMetadataSelection(
-                workspaceURL: URL(fileURLWithPath: workspace.path, isDirectory: true),
-                session: nil
-            )
-        }
-
-        return nil
-    }
-
-    private func loadCLIMetadata() -> CLIMetadataFile? {
-        guard let data = try? Data(contentsOf: cliMetadataPath),
-              let metadata = try? JSONDecoder().decode(CLIMetadataFile.self, from: data) else {
-            return nil
-        }
-        return metadata
-    }
-
     private func syncCLIMetadata(workspaces: [WorkspaceRecord], sessions: [SessionRecord]) {
         do {
-            let existing = loadCLIMetadata() ?? CLIMetadataFile(
+            let existing = cliMetadataReader.loadMetadata() ?? CLIMetadataFile(
                 version: Self.cliMetadataVersion,
                 activeVoiceSessionId: nil,
                 workspaces: [],
@@ -396,7 +347,7 @@ final class WorkspaceManager: ObservableObject {
                 return CLIMetadataFile.Workspace(
                     id: workspace.id,
                     path: workspace.path,
-                    createdAt: existingWorkspace?.createdAt ?? Self.iso8601Formatter.string(from: workspace.createdAt),
+                    createdAt: existingWorkspace?.createdAt ?? CLIMetadataReader.iso8601Formatter.string(from: workspace.createdAt),
                     lastActiveSessionId: workspace.lastActiveSessionID
                 )
             }
@@ -413,8 +364,8 @@ final class WorkspaceManager: ObservableObject {
                     id: session.id,
                     workspaceId: session.workspaceID,
                     name: session.name,
-                    lastActiveAt: Self.iso8601Formatter.string(from: session.updatedAt),
-                    createdAt: existingSession?.createdAt ?? Self.iso8601Formatter.string(from: session.createdAt),
+                    lastActiveAt: CLIMetadataReader.iso8601Formatter.string(from: session.updatedAt),
+                    createdAt: existingSession?.createdAt ?? CLIMetadataReader.iso8601Formatter.string(from: session.createdAt),
                     isVoiceActive: session.id == activeSession?.id,
                     piSessionFile: existingSession?.piSessionFile ?? ""
                 )

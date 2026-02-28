@@ -41,8 +41,7 @@ final class SessionStore {
 
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
-        let sessionsDirectory = fileManager.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/RubberDuck/sessions", isDirectory: true)
+        let sessionsDirectory = AppSupportPaths.sessionsDirectoryURL(fileManager: fileManager)
         self.databaseURL = sessionsDirectory.appendingPathComponent("metadata.sqlite")
         self.sessionsDirectoryURL = sessionsDirectory
 
@@ -431,14 +430,19 @@ final class SessionStore {
         return rows
     }
 
-    private static let validTableNames: Set<String> = ["workspaces", "sessions"]
-    private static let validDefinitions: Set<String> = ["TEXT", "INTEGER", "REAL", "BLOB"]
+}
 
-    private static func isValidColumnName(_ name: String) -> Bool {
+// MARK: - SQLite Helpers
+
+private extension SessionStore {
+    static let validTableNames: Set<String> = ["workspaces", "sessions"]
+    static let validDefinitions: Set<String> = ["TEXT", "INTEGER", "REAL", "BLOB"]
+
+    static func isValidColumnName(_ name: String) -> Bool {
         name.range(of: "^[a-z_]+$", options: .regularExpression) != nil
     }
 
-    private func ensureColumnExists(table: String, column: String, definition: String) throws {
+    func ensureColumnExists(table: String, column: String, definition: String) throws {
         guard Self.validTableNames.contains(table) else {
             throw SessionStoreError.sqliteError("Invalid table name: \(table)")
         }
@@ -454,7 +458,7 @@ final class SessionStore {
         try execute("ALTER TABLE \(table) ADD COLUMN \(column) \(definition)")
     }
 
-    private func tableHasColumn(table: String, column: String) throws -> Bool {
+    func tableHasColumn(table: String, column: String) throws -> Bool {
         guard let db else { throw SessionStoreError.databaseUnavailable }
         let sql = "PRAGMA table_info(\(table))"
         var statement: OpaquePointer?
@@ -472,7 +476,7 @@ final class SessionStore {
         return false
     }
 
-    private func execute(_ sql: String, binder: ((OpaquePointer?) -> Void)? = nil) throws {
+    func execute(_ sql: String, binder: ((OpaquePointer?) -> Void)? = nil) throws {
         guard let db else { throw SessionStoreError.databaseUnavailable }
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -487,9 +491,7 @@ final class SessionStore {
         }
     }
 
-    // MARK: - SQLite Helpers
-
-    private func bindText(_ value: String?, at index: Int32, in statement: OpaquePointer?) {
+    func bindText(_ value: String?, at index: Int32, in statement: OpaquePointer?) {
         guard let value else {
             sqlite3_bind_null(statement, index)
             return
@@ -497,25 +499,25 @@ final class SessionStore {
         sqlite3_bind_text(statement, index, value, -1, sqliteTransientDestructor)
     }
 
-    private func columnText(_ statement: OpaquePointer?, index: Int32) -> String? {
+    func columnText(_ statement: OpaquePointer?, index: Int32) -> String? {
         guard let cString = sqlite3_column_text(statement, index) else {
             return nil
         }
         return String(cString: cString)
     }
 
-    private func defaultHistoryFilePath(forSessionID sessionID: String) -> String {
+    func defaultHistoryFilePath(forSessionID sessionID: String) -> String {
         sessionsDirectoryURL
             .appendingPathComponent("\(sessionID).jsonl")
             .path
     }
 
-    private func workspaceID(forPath path: String) -> String {
+    func workspaceID(forPath path: String) -> String {
         let digest = SHA256.hash(data: Data(path.utf8))
         return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
     }
 
-    private func sqliteErrorMessage() -> String {
+    func sqliteErrorMessage() -> String {
         guard let db, let cString = sqlite3_errmsg(db) else {
             return "Unknown SQLite error"
         }

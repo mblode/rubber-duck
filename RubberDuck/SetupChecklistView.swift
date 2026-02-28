@@ -2,12 +2,12 @@ import SwiftUI
 
 struct SetupChecklistView: View {
     @ObservedObject var audioManager: AudioManager
-    @ObservedObject var transcriptionManager: TranscriptionManager
+    @ObservedObject var configManager: AppConfigManager
 
     @State private var pollTimer: Timer?
 
     private var isAPIKeySet: Bool {
-        transcriptionManager.getAPIKey() != nil
+        configManager.getAPIKey() != nil
     }
 
     private var isMicrophoneGranted: Bool {
@@ -51,12 +51,12 @@ struct SetupChecklistView: View {
 
         if allStepsComplete {
             Button("Get Started") {
-                transcriptionManager.setupGuideDismissed = true
+                configManager.setupGuideDismissed = true
             }
         }
 
         Button("Skip for Now") {
-            transcriptionManager.setupGuideDismissed = true
+            configManager.setupGuideDismissed = true
         }
 
         Divider()

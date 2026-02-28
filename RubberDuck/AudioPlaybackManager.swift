@@ -1,12 +1,32 @@
 import Foundation
 import AVFoundation
 
+struct AudioPlaybackStopSnapshot {
+    let totalScheduledSamples: Int
+    let totalPlayedSamples: Int
+    let totalUnplayedSamples: Int
+    let itemScheduledSamples: Int
+    let itemPlayedSamples: Int
+    let itemUnplayedSamples: Int
+}
+
+private struct AudioPlaybackItemKey: Hashable {
+    let itemId: String
+    let contentIndex: Int
+}
+
+private struct AudioPlaybackItemSamples {
+    var scheduledSamples: Int = 0
+    var playedSamples: Int = 0
+}
+
 class AudioPlaybackManager: ObservableObject {
     @Published var isPlaying = false
 
-    private var audioEngine: AVAudioEngine?
-    private var playerNode: AVAudioPlayerNode?
+    private weak var audioManager: AudioManager?
     private let playbackQueue = DispatchQueue(label: "co.blode.rubber-duck.playback")
+    private var fallbackAudioEngine: AVAudioEngine?
+    private var fallbackPlayerNode: AVAudioPlayerNode?
 
     private let pcm16Format = AVAudioFormat(commonFormat: .pcmFormatInt16,
                                             sampleRate: AudioConstants.sampleRate,
@@ -15,6 +35,14 @@ class AudioPlaybackManager: ObservableObject {
 
     private(set) var totalSamplesScheduled: Int = 0
     private(set) var totalSamplesPlayed: Int = 0
+    private var firstEnqueueAt: Date?
+    private var firstScheduleLatencyLogged = false
+    private var droppedChunksBeforeReady = 0
+    private var itemSamples: [AudioPlaybackItemKey: AudioPlaybackItemSamples] = [:]
+
+    init(audioManager: AudioManager) {
+        self.audioManager = audioManager
+    }
 
     // MARK: - Playback Control
 
@@ -22,36 +50,43 @@ class AudioPlaybackManager: ObservableObject {
         playbackQueue.async { [weak self] in
             guard let self = self else { return }
 
-            self.cleanupEngine()
-
-            let engine = AVAudioEngine()
-            let player = AVAudioPlayerNode()
-
-            engine.attach(player)
-            engine.connect(player, to: engine.mainMixerNode, format: self.pcm16Format)
-            engine.prepare()
-
-            do {
-                try engine.start()
-                player.play()
-                self.audioEngine = engine
-                self.playerNode = player
-                self.totalSamplesScheduled = 0
-                self.totalSamplesPlayed = 0
-                DispatchQueue.main.async {
-                    self.isPlaying = true
-                }
-                logInfo("AudioPlaybackManager: Playback started")
-            } catch {
-                logError("AudioPlaybackManager: Failed to start engine: \(error.localizedDescription)")
+            // The playerNode lives on AudioManager's shared engine (for AEC).
+            // Just reset metrics and start the player — don't create a new engine.
+            let playerNode: AVAudioPlayerNode?
+            if let audioManager = self.audioManager,
+               audioManager.isCaptureEngineRunning,
+               let sharedPlayerNode = audioManager.playerNode {
+                self.teardownFallbackPlaybackEngine()
+                playerNode = sharedPlayerNode
+            } else {
+                playerNode = self.ensureFallbackPlaybackNode()
             }
+
+            guard let playerNode else {
+                logError("AudioPlaybackManager: No player node available")
+                self.resetPlaybackMetrics()
+                DispatchQueue.main.async {
+                    self.isPlaying = false
+                }
+                return
+            }
+
+            self.resetPlaybackMetrics()
+            playerNode.play()
+            DispatchQueue.main.async {
+                self.isPlaying = true
+            }
+            logInfo("AudioPlaybackManager: Playback started")
         }
     }
 
     func stopPlayback() {
         playbackQueue.async { [weak self] in
             guard let self = self else { return }
-            self.cleanupEngine()
+            self.audioManager?.playerNode?.stop()
+            self.fallbackPlayerNode?.stop()
+            self.teardownFallbackPlaybackEngine()
+            self.resetPlaybackMetrics()
             DispatchQueue.main.async {
                 self.isPlaying = false
             }
@@ -60,23 +95,56 @@ class AudioPlaybackManager: ObservableObject {
     }
 
     func stopImmediately() -> Int {
-        return playbackQueue.sync { [weak self] () -> Int in
-            guard let self = self else { return 0 }
+        stopImmediatelySnapshot(itemId: nil, contentIndex: nil).totalUnplayedSamples
+    }
 
-            let unplayed = self.totalSamplesScheduled - self.totalSamplesPlayed
-            self.playerNode?.stop()
-            self.cleanupEngine()
+    func stopImmediatelySnapshot(itemId: String?, contentIndex: Int?) -> AudioPlaybackStopSnapshot {
+        playbackQueue.sync { [weak self] in
+            guard let self else {
+                return AudioPlaybackStopSnapshot(
+                    totalScheduledSamples: 0,
+                    totalPlayedSamples: 0,
+                    totalUnplayedSamples: 0,
+                    itemScheduledSamples: 0,
+                    itemPlayedSamples: 0,
+                    itemUnplayedSamples: 0
+                )
+            }
+
+            let totalScheduled = self.totalSamplesScheduled
+            let totalPlayed = min(self.totalSamplesPlayed, totalScheduled)
+            let totalUnplayed = max(totalScheduled - totalPlayed, 0)
+
+            let key = self.playbackKey(itemId: itemId, contentIndex: contentIndex)
+            let perItem = key.flatMap { self.itemSamples[$0] }
+            let itemScheduled = perItem?.scheduledSamples ?? 0
+            let itemPlayed = min(perItem?.playedSamples ?? 0, itemScheduled)
+            let itemUnplayed = max(itemScheduled - itemPlayed, 0)
+
+            // Stop the player node but do NOT tear down the shared engine.
+            self.audioManager?.playerNode?.stop()
+            self.fallbackPlayerNode?.stop()
+            self.teardownFallbackPlaybackEngine()
+            self.resetPlaybackMetrics()
             DispatchQueue.main.async {
                 self.isPlaying = false
             }
-            logInfo("AudioPlaybackManager: Stopped immediately, \(unplayed) unplayed samples")
-            return max(unplayed, 0)
+            logInfo("AudioPlaybackManager: Stopped immediately, \(totalUnplayed) unplayed samples")
+
+            return AudioPlaybackStopSnapshot(
+                totalScheduledSamples: totalScheduled,
+                totalPlayedSamples: totalPlayed,
+                totalUnplayedSamples: totalUnplayed,
+                itemScheduledSamples: itemScheduled,
+                itemPlayedSamples: itemPlayed,
+                itemUnplayedSamples: itemUnplayed
+            )
         }
     }
 
     // MARK: - Audio Enqueueing
 
-    func enqueueAudio(base64Chunk: String) {
+    func enqueueAudio(base64Chunk: String, itemId: String? = nil, contentIndex: Int? = nil) {
         guard let data = Data(base64Encoded: base64Chunk) else {
             logError("AudioPlaybackManager: Failed to decode base64 audio chunk")
             return
@@ -108,27 +176,111 @@ class AudioPlaybackManager: ObservableObject {
         }
 
         playbackQueue.async { [weak self] in
-            guard let self = self, let playerNode = self.playerNode else {
-                logDebug("AudioPlaybackManager: No player node, dropping audio chunk")
+            guard let self else { return }
+            let key = self.playbackKey(itemId: itemId, contentIndex: contentIndex)
+
+            if self.firstEnqueueAt == nil {
+                self.firstEnqueueAt = Date()
+            }
+
+            let playerNode: AVAudioPlayerNode?
+            if let audioManager = self.audioManager,
+               audioManager.isCaptureEngineRunning,
+               let sharedPlayerNode = audioManager.playerNode {
+                self.teardownFallbackPlaybackEngine()
+                playerNode = sharedPlayerNode
+            } else {
+                playerNode = self.ensureFallbackPlaybackNode()
+            }
+
+            guard let playerNode else {
+                self.droppedChunksBeforeReady += 1
+                logDebug("AudioPlaybackManager: No player node, dropping audio chunk (\(self.droppedChunksBeforeReady) dropped before ready)")
                 return
             }
 
+            if !playerNode.isPlaying {
+                playerNode.play()
+                DispatchQueue.main.async {
+                    self.isPlaying = true
+                }
+                logDebug("AudioPlaybackManager: Player node became available; started playback lazily")
+            }
+
+            if !self.firstScheduleLatencyLogged, let firstEnqueueAt = self.firstEnqueueAt {
+                let latencyMs = Int(Date().timeIntervalSince(firstEnqueueAt) * 1000)
+                self.firstScheduleLatencyLogged = true
+                logDebug("AudioPlaybackManager: First schedule latency \(latencyMs)ms, dropped before ready: \(self.droppedChunksBeforeReady)")
+            }
+
             self.totalSamplesScheduled += sampleCount
+            if let key {
+                var stats = self.itemSamples[key, default: AudioPlaybackItemSamples()]
+                stats.scheduledSamples += sampleCount
+                self.itemSamples[key] = stats
+            }
 
             playerNode.scheduleBuffer(buffer) { [weak self] in
                 self?.playbackQueue.async {
-                    self?.totalSamplesPlayed += sampleCount
+                    guard let self else { return }
+                    self.totalSamplesPlayed += sampleCount
+                    if let key {
+                        var stats = self.itemSamples[key, default: AudioPlaybackItemSamples()]
+                        stats.playedSamples += sampleCount
+                        self.itemSamples[key] = stats
+                    }
                 }
             }
         }
     }
 
-    // MARK: - Cleanup
+    // MARK: - Private
 
-    private func cleanupEngine() {
-        playerNode?.stop()
-        audioEngine?.stop()
-        playerNode = nil
-        audioEngine = nil
+    private func resetPlaybackMetrics() {
+        totalSamplesScheduled = 0
+        totalSamplesPlayed = 0
+        firstEnqueueAt = nil
+        firstScheduleLatencyLogged = false
+        droppedChunksBeforeReady = 0
+        itemSamples.removeAll(keepingCapacity: true)
+    }
+
+    private func ensureFallbackPlaybackNode() -> AVAudioPlayerNode? {
+        if let fallbackPlayerNode, fallbackAudioEngine != nil {
+            return fallbackPlayerNode
+        }
+
+        let engine = AVAudioEngine()
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: pcm16Format)
+        engine.prepare()
+
+        do {
+            try engine.start()
+            fallbackAudioEngine = engine
+            fallbackPlayerNode = player
+            logInfo("AudioPlaybackManager: Started fallback playback engine (AEC disabled)")
+            return player
+        } catch {
+            fallbackAudioEngine = nil
+            fallbackPlayerNode = nil
+            logError("AudioPlaybackManager: Failed to start fallback playback engine: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func teardownFallbackPlaybackEngine() {
+        fallbackPlayerNode?.stop()
+        fallbackAudioEngine?.stop()
+        fallbackPlayerNode = nil
+        fallbackAudioEngine = nil
+    }
+
+    private func playbackKey(itemId: String?, contentIndex: Int?) -> AudioPlaybackItemKey? {
+        guard let itemId, !itemId.isEmpty else {
+            return nil
+        }
+        return AudioPlaybackItemKey(itemId: itemId, contentIndex: contentIndex ?? 0)
     }
 }

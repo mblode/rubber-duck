@@ -4,8 +4,8 @@ import { SOCKET_PATH } from "./constants.js";
 import type {
   DaemonEvent,
   DaemonMessage,
-  DaemonMethod,
   DaemonRequest,
+  DaemonRequestMap,
   DaemonResponse,
 } from "./types.js";
 import { isDaemonEvent, isDaemonResponse } from "./types.js";
@@ -17,7 +17,7 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export type DaemonEventHandler = (event: DaemonEvent) => void;
+type DaemonEventHandler = (event: DaemonEvent) => void;
 
 export class DaemonClient {
   private readonly socket: Socket;
@@ -72,9 +72,15 @@ export class DaemonClient {
     });
   }
 
-  static connect(timeoutMs = 5000): Promise<DaemonClient> {
+  static connect(
+    options?: number | { socketPath?: string; timeoutMs?: number }
+  ): Promise<DaemonClient> {
+    const socketPath =
+      typeof options === "object" ? options.socketPath : undefined;
+    const timeoutMs =
+      typeof options === "number" ? options : (options?.timeoutMs ?? 5000);
     return new Promise<DaemonClient>((resolve, reject) => {
-      const socket = createConnection({ path: SOCKET_PATH });
+      const socket = createConnection({ path: socketPath ?? SOCKET_PATH });
 
       const timer = setTimeout(() => {
         socket.destroy();
@@ -90,16 +96,16 @@ export class DaemonClient {
         clearTimeout(timer);
         reject(
           new Error(
-            `Cannot connect to daemon: ${err.message}. Run \`duck attach\` to start.`
+            `Cannot connect to daemon: ${err.message}. Run \`duck\` to start.`
           )
         );
       });
     });
   }
 
-  request(
-    method: DaemonMethod,
-    params: Record<string, unknown> = {},
+  request<M extends DaemonRequest["method"]>(
+    method: M,
+    params: DaemonRequestMap[M],
     timeoutMs = 30_000
   ): Promise<DaemonResponse> {
     if (!this.connected) {
@@ -107,7 +113,7 @@ export class DaemonClient {
     }
 
     const id = generateId();
-    const request: DaemonRequest = { id, method, params };
+    const request = { id, method, params } as DaemonRequest;
     const line = `${JSON.stringify(request)}\n`;
 
     return new Promise<DaemonResponse>((resolve, reject) => {

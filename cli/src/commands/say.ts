@@ -1,10 +1,11 @@
-import { styleText } from "node:util";
-import type { Command } from "commander";
+import { type Command, Option } from "commander";
 import { DaemonClient } from "../client.js";
 import { ensureDaemon } from "../ensure-daemon.js";
-import { defaultColorEnabled } from "../renderer/colors.js";
+import { createColorize, defaultColorEnabled } from "../renderer/colors.js";
 import { createRenderer } from "../renderer/index.js";
 import type { DaemonEvent, PiEvent } from "../types.js";
+import { ensureFollowing } from "./session-bootstrap.js";
+import { createStreamLifecycle } from "./stream-lifecycle.js";
 import { handleUiEvent } from "./ui-response.js";
 
 export function registerSayCommand(program: Command): void {
@@ -12,32 +13,31 @@ export function registerSayCommand(program: Command): void {
     .command("say <message...>")
     .description("Send a message to the active session")
     .option("--json", "Output raw NDJSON events")
-    .option("--session <id>", "Target a specific session")
-    .option("--show-thinking", "Display model thinking blocks")
-    .option("--color", "Force color output")
-    .option("--no-color", "Disable color output")
+    .addOption(
+      new Option("--session <id>", "Target a specific session").hideHelp()
+    )
+    .addOption(
+      new Option("--show-thinking", "Display model thinking blocks").hideHelp()
+    )
+    .addOption(new Option("--color", "Force color output").hideHelp())
+    .addOption(new Option("--no-color", "Disable color output").hideHelp())
     .action(async (messageParts: string[], options) => {
       const message = messageParts.join(" ");
       const color =
         typeof options.color === "boolean"
           ? options.color
           : defaultColorEnabled();
-      const colorize = (
-        format: Parameters<typeof styleText>[0],
-        value: string
-      ) => (color ? styleText(format, value) : value);
+      const colorize = createColorize(color);
 
       try {
         await ensureDaemon();
         const client = await DaemonClient.connect();
 
-        // First, follow the session to get streaming output
-        const followParams: Record<string, unknown> = {};
-        if (options.session) {
-          followParams.sessionId = options.session;
-        }
-
-        const followResp = await client.request("follow", followParams);
+        // Follow the session (auto-attaching if needed)
+        const followResp = await ensureFollowing(
+          client,
+          options.session as string | undefined
+        );
         if (!followResp.ok) {
           console.error(colorize("red", `Error: ${followResp.error}`));
           client.close();
@@ -87,12 +87,10 @@ export function registerSayCommand(program: Command): void {
         });
 
         // Send the message
-        const sayParams: Record<string, unknown> = { message };
-        if (options.session) {
-          sayParams.sessionId = options.session;
-        }
-
-        const sayResp = await client.request("say", sayParams);
+        const sayResp = await client.request("say", {
+          message,
+          sessionId: options.session as string | undefined,
+        });
         if (!sayResp.ok) {
           console.error(colorize("red", `Error: ${sayResp.error}`));
           renderer.cleanup();
@@ -109,34 +107,23 @@ export function registerSayCommand(program: Command): void {
           }
         }, 10_000);
 
-        // Handle SIGINT
-        process.on("SIGINT", () => {
-          if (!agentDone) {
-            // Abort the operation
-            client.request("abort", {}).catch(() => {
-              // Best-effort abort on interrupt
-            });
-          }
-          renderer.cleanup();
+        const clearTimers = () => {
           if (commandOnlyTimer) {
             clearTimeout(commandOnlyTimer);
             commandOnlyTimer = null;
           }
-          client.close();
-          process.exit(0);
+        };
+
+        const lifecycle = createStreamLifecycle(client, renderer, colorize, {
+          abortOnInterrupt: true,
+          onCleanup: clearTimers,
         });
 
         // Timeout: if agent doesn't finish in 10 minutes, exit
         setTimeout(() => {
           if (!agentDone) {
-            renderer.cleanup();
-            if (commandOnlyTimer) {
-              clearTimeout(commandOnlyTimer);
-              commandOnlyTimer = null;
-            }
             console.error(colorize("yellow", "\nOperation timed out."));
-            client.close();
-            process.exit(1);
+            lifecycle.cleanup();
           }
         }, 600_000);
       } catch (err) {

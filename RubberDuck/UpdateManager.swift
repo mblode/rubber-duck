@@ -13,7 +13,7 @@ final class UpdateManager: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
 
     init() {
-        let isRunningTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        let isRunningTests = AppEnvironment.isRunningTests
         updaterController = SPUStandardUpdaterController(
             startingUpdater: !isRunningTests,
             updaterDelegate: nil,

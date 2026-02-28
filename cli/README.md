@@ -21,25 +21,19 @@ npx rubber-duck --help
 ## Core Commands
 
 ```bash
-duck attach [path]              # attach workspace + create/use session
-duck follow [session]           # stream live agent events
+duck [path]                     # attach workspace + stream live events
 duck say <message...>           # send prompt to active session
 duck sessions [--all] [--json]  # list sessions
-duck use <session>              # set active session
-duck new [--name <name>]        # create session
-duck abort [session]            # abort current run
 duck doctor                     # local + daemon diagnostics
-duck export [session] [--out]   # export session HTML
 ```
 
-`duck follow` and `duck say` support `--json`, `--show-thinking`, and
-`--color` / `--no-color`.
+`duck` streams both Pi daemon events and app voice history for the active session.
+`duck say` supports `--json` (plus advanced hidden flags for debugging).
 
 ## End-to-End Flow
 
 ```bash
-duck attach .
-duck follow
+duck .
 # in another terminal
 duck say "run tests and summarize failures only"
 duck sessions --all

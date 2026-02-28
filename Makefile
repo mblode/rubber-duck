@@ -11,7 +11,7 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 CODESIGN_IDENTITY ?= Developer ID Application
 TEAM_ID ?= $(APPLE_TEAM_ID)
 
-.PHONY: build test cli-build cli-test archive export dmg notarize clean
+.PHONY: build test cli-build cli-test e2e-swift e2e-cli e2e-smoke e2e archive export dmg notarize clean unused
 
 build:
 	xcodebuild -scheme $(SCHEME) \
@@ -33,6 +33,17 @@ cli-build:
 
 cli-test:
 	cd cli && npm run test -- --passWithNoTests
+
+e2e-swift: ## Run Swift Realtime E2E tests (requires /tmp/rubber-duck-live-realtime-test with API key)
+	xcodebuild -scheme Commandment -configuration Debug -destination 'platform=macOS' test -only-testing:RubberDuckTests/RealtimeClientLiveSmokeTests -derivedDataPath /tmp/rubber-duck-build
+
+e2e-cli: ## Run CLI daemon integration E2E test (requires OPENAI_API_KEY or ANTHROPIC_API_KEY)
+	cd cli && npm run build && npm test -- --reporter=verbose e2e
+
+e2e-smoke: ## Run CLI shell smoke test (requires OPENAI_API_KEY or ANTHROPIC_API_KEY and built CLI)
+	cd cli && scripts/e2e-smoke.sh
+
+e2e: e2e-swift e2e-cli e2e-smoke ## Run all E2E tests
 
 archive:
 	xcodebuild -scheme $(SCHEME) \
@@ -88,6 +99,9 @@ notarize: dmg
 		--wait
 	xcrun stapler staple $(DMG_PATH)
 	@echo "Notarized: $(DMG_PATH)"
+
+unused: ## Find unused Swift declarations with Periphery
+	periphery scan
 
 clean:
 	rm -rf $(DERIVED_DATA)

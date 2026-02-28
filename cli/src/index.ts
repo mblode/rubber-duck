@@ -14,14 +14,10 @@ export {
 // Renderer
 export { createRenderer } from "./renderer/index.js";
 export type {
-  EventRenderer,
-  RendererOptions,
-  RendererPiEvent,
-} from "./renderer/types.js";
-export type {
   AgentEndEvent,
   AgentMessage,
   AgentStartEvent,
+  AppHistoryEvent,
   AssistantMessageDelta,
   AssistantMessageDeltaType,
   AutoCompactionEndEvent,
@@ -34,8 +30,10 @@ export type {
   DaemonMetadata,
   DaemonMethod,
   DaemonRequest,
+  DaemonRequestMap,
   DaemonResponse,
   DoctorCheck,
+  EventRenderer,
   ExtensionErrorEvent,
   ExtensionUiRequestEvent,
   ExtensionUiResponsePayload,
@@ -48,6 +46,8 @@ export type {
   PiSessionStats,
   PiState,
   PiToolCall,
+  RendererOptions,
+  RendererPiEvent,
   Session,
   ToolContent,
   ToolExecutionEndEvent,

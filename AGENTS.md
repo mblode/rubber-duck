@@ -8,7 +8,13 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build` — Build from CLI
 - `xcodebuild -scheme Commandment -configuration Release build -derivedDataPath /tmp/rubber-duck-build` — Release build
 - `xcodebuild -scheme Commandment -configuration Debug -destination 'platform=macOS' test -derivedDataPath /tmp/rubber-duck-build` — Run tests
+- `make unused` — Find unused Swift declarations (Periphery — Knip equivalent for Swift)
 - `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build && (pkill -x RubberDuck || true) && rsync -a --delete /tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app/ /Applications/RubberDuck.app/ && open /Applications/RubberDuck.app` — Build, replace installed app, relaunch (avoids stale bundle)
+
+### Rebuild Shortcuts
+
+- `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build && (pkill -x RubberDuck || true) && rsync -a --delete /tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app/ /Applications/RubberDuck.app/ && open /Applications/RubberDuck.app` — Rebuild and replace the installed macOS app
+- `cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" || true)` — Rebuild/relink CLI and force daemon restart so `duck` uses latest code
 
 ### CLI Commands (`cli/`)
 
@@ -18,9 +24,16 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - `cd cli && npm run lint` — Biome checks
 - `cd cli && npm run verify:ci` — Build + typecheck + lint + help smoke
 - `cd cli && node dist/daemon.js --verbose` — Run daemon in foreground for debugging
-- `cd cli && node dist/cli.js attach .` — Attach current workspace and create/use session
-- `cd cli && node dist/cli.js follow` — Stream session events
+- `cd cli && node dist/cli.js .` — Attach current workspace and start streaming
 - `cd cli && node dist/cli.js say "list files"` — Send prompt to active session
+
+### E2E Tests (require API keys)
+
+- `echo "sk-..." > /tmp/rubber-duck-live-realtime-test` — Set up Swift Realtime live test key
+- `make e2e-swift` — Run Swift Realtime full-conversation E2E (requires `/tmp/rubber-duck-live-realtime-test`)
+- `make e2e-cli` — Run CLI daemon integration E2E (requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
+- `make e2e-smoke` — Run CLI shell smoke test (requires API key + built CLI)
+- `make e2e` — Run all E2E tests
 
 ## Setup
 
@@ -41,6 +54,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - CLI uses a local daemon + Unix socket. Default socket path is `~/Library/Application Support/RubberDuck/duck.sock`; if path length is too long, it falls back to `$TMPDIR/rubber-duck-<hash>.sock`.
 - CLI daemon runtime files: `~/Library/Application Support/RubberDuck/{metadata.json,config.json,duck-daemon.log,duck-daemon.pid,pi-sessions/}`.
 - CLI `follow` and `say` automatically handle Pi `extension_ui_request` events via `@clack/prompts` and send `extension_ui_response` back through the daemon.
+- CLI daemon auto-detects a fast Pi model from your API key: `ANTHROPIC_API_KEY` → `haiku`, `OPENAI_API_KEY` → `gpt-4o-mini`, `GOOGLE_API_KEY` → `gemini-2.0-flash`. Override with `RUBBER_DUCK_PI_MODEL` env var (e.g. `RUBBER_DUCK_PI_MODEL=sonnet`) or `piModel` in `config.json`. Thinking defaults to `off` for speed; override with `RUBBER_DUCK_PI_THINKING`.
 
 ## Conventions
 

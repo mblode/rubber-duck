@@ -1,13 +1,21 @@
 import Foundation
 
-@MainActor
-class ToolCallHandler {
-    private let toolExecutor: ToolExecutor
-    private let realtimeClient: RealtimeClient
+/// Protocol for sending tool results back to the Realtime API.
+/// RealtimeClientProtocol inherits from this, so any RealtimeClientProtocol
+/// conformer can be used where ToolResultSending is expected.
+protocol ToolResultSending: AnyObject {
+    func sendToolResult(callId: String, output: String)
+    func requestModelResponse()
+}
 
-    init(toolExecutor: ToolExecutor, realtimeClient: RealtimeClient) {
+@MainActor
+class ToolOrchestrator {
+    private let toolExecutor: ToolExecutor
+    private let resultSender: ToolResultSending
+
+    init(toolExecutor: ToolExecutor, resultSender: ToolResultSending) {
         self.toolExecutor = toolExecutor
-        self.realtimeClient = realtimeClient
+        self.resultSender = resultSender
     }
 
     func setSafeMode(_ enabled: Bool) {
@@ -20,7 +28,7 @@ class ToolCallHandler {
         Task {
             for call in calls {
                 onToolStart?(call.name)
-                logInfo("ToolCallHandler: Executing \(call.name) (callId: \(call.callId))")
+                logInfo("ToolOrchestrator: Executing \(call.name) (callId: \(call.callId))")
 
                 let result = await withCheckedContinuation { continuation in
                     DispatchQueue.global(qos: .userInitiated).async {
@@ -29,9 +37,10 @@ class ToolCallHandler {
                     }
                 }
 
-                logInfo("ToolCallHandler: \(call.name) completed (\(result.count) chars)")
-                realtimeClient.sendToolResult(callId: call.callId, output: result)
+                logInfo("ToolOrchestrator: \(call.name) completed (\(result.count) chars)")
+                resultSender.sendToolResult(callId: call.callId, output: result)
             }
+            resultSender.requestModelResponse()
             completion()
         }
     }

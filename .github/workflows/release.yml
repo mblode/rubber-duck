@@ -17,10 +17,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Preflight shared scheme
+        run: |
+          set -euo pipefail
+          if ! xcodebuild -list -project RubberDuck.xcodeproj | grep -qE '^[[:space:]]+Commandment$'; then
+            echo "Required shared scheme 'Commandment' not found in RubberDuck.xcodeproj"
+            echo "Available schemes:"
+            xcodebuild -list -project RubberDuck.xcodeproj
+            exit 1
+          fi
+
       - name: Resolve SPM dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
-            -scheme RubberDuck \
+            -scheme Commandment \
             -derivedDataPath /tmp/rubber-duck-build
 
       - name: Extract version from tag
@@ -34,7 +44,7 @@ jobs:
 
       - name: Build
         run: |
-          xcodebuild -scheme RubberDuck \
+          xcodebuild -scheme Commandment \
             -configuration Debug \
             -derivedDataPath /tmp/rubber-duck-build \
             CODE_SIGNING_ALLOWED=NO \
@@ -44,7 +54,7 @@ jobs:
 
       - name: Test
         run: |
-          xcodebuild -scheme RubberDuck \
+          xcodebuild -scheme Commandment \
             -configuration Debug \
             -destination 'platform=macOS' \
             -derivedDataPath /tmp/rubber-duck-build \
@@ -72,8 +82,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build, typecheck, lint
-        run: npm run build && npm run typecheck && npm run lint
+      - name: Build, typecheck, lint, unit tests
+        run: npm run build && npm run typecheck && npm run lint && npm test
 
       - name: CLI verification
         shell: bash
@@ -132,12 +142,12 @@ jobs:
       - name: Resolve SPM dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
-            -scheme RubberDuck \
+            -scheme Commandment \
             -derivedDataPath /tmp/rubber-duck-build
 
       - name: Archive
         run: |
-          xcodebuild -scheme RubberDuck \
+          xcodebuild -scheme Commandment \
             -configuration Release \
             -derivedDataPath /tmp/rubber-duck-build \
             -archivePath /tmp/rubber-duck-build/RubberDuck.xcarchive \

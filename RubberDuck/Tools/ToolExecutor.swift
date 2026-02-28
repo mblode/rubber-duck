@@ -6,41 +6,37 @@ struct WorkspaceContext {
 
 class ToolExecutor {
     let workspace: WorkspaceContext
-    var safeMode: Bool = false
+    var safeMode: Bool = false {
+        didSet {
+            for i in handlers.indices {
+                if var bashTool = handlers[i] as? BashTool {
+                    bashTool.safeMode = safeMode
+                    handlers[i] = bashTool
+                } else if var writeTool = handlers[i] as? WriteFileTool {
+                    writeTool.safeMode = safeMode
+                    handlers[i] = writeTool
+                } else if var editTool = handlers[i] as? EditFileTool {
+                    editTool.safeMode = safeMode
+                    handlers[i] = editTool
+                }
+            }
+        }
+    }
 
-    private static let maxFileSize = 1_048_576 // 1MB
-    private static let maxOutputSize = 102_400 // 100KB
-    private static let maxFindResults = 200
-    private static let bashTimeout: TimeInterval = 30
-    private static let shellPath = "/bin/zsh"
-    private static let grepPath = "/usr/bin/grep"
+    static let maxOutputSize = 102_400 // 100KB
 
-    private static let safeModeAllowedPrefixes = [
-        "git", "grep", "rg", "find", "ls", "cat", "head", "tail", "wc",
-        "swift test", "xcodebuild test", "npm test", "pytest"
-    ]
-
-    private static let skippedDirectories: Set<String> = [
-        ".git", ".build", "node_modules"
-    ]
+    private var handlers: [ToolHandler]
 
     init(workspace: WorkspaceContext) {
         self.workspace = workspace
-    }
-
-    /// Truncate a string to at most `maxBytes` of UTF-8 without splitting multi-byte characters.
-    private func truncateUTF8(_ string: String, maxBytes: Int) -> String {
-        guard string.utf8.count > maxBytes else { return string }
-        var index = string.startIndex
-        var byteCount = 0
-        while index < string.endIndex {
-            let nextIndex = string.index(after: index)
-            let charBytes = string[index..<nextIndex].utf8.count
-            if byteCount + charBytes > maxBytes { break }
-            byteCount += charBytes
-            index = nextIndex
-        }
-        return String(string[..<index])
+        self.handlers = [
+            ReadFileTool(workspace: workspace),
+            WriteFileTool(workspace: workspace),
+            EditFileTool(workspace: workspace),
+            BashTool(workspace: workspace),
+            GrepSearchTool(workspace: workspace),
+            FindFilesTool(workspace: workspace),
+        ]
     }
 
     func execute(toolName: String, arguments: String) -> String {
@@ -49,57 +45,119 @@ class ToolExecutor {
             return "Error: Invalid JSON arguments"
         }
 
-        switch toolName {
-        case "read_file":
-            return executeReadFile(json)
-        case "write_file":
-            return executeWriteFile(json)
-        case "edit_file":
-            return executeEditFile(json)
-        case "bash":
-            return executeBash(json)
-        case "grep_search":
-            return executeGrepSearch(json)
-        case "find_files":
-            return executeFindFiles(json)
-        default:
+        guard let handler = handlers.first(where: { $0.toolName == toolName }) else {
             return "Error: Unknown tool '\(toolName)'"
         }
+
+        return handler.execute(arguments: json)
     }
+}
 
-    // MARK: - Path Validation
+// MARK: - Shared Utilities
 
-    private enum PathError: Error {
-        case escapesWorkspace
-    }
+enum PathError: Error {
+    case escapesWorkspace
+}
 
-    private func resolvedPath(for relativePath: String) -> Result<URL, PathError> {
-        let resolved: URL
-        if relativePath.hasPrefix("/") {
-            resolved = URL(fileURLWithPath: relativePath).standardizedFileURL
-        } else {
-            resolved = workspace.rootPath.appendingPathComponent(relativePath).standardizedFileURL
+func canonicalizedFileURL(_ url: URL) -> URL {
+    url.standardizedFileURL.resolvingSymlinksInPath().standardizedFileURL
+}
+
+func canonicalizedPathForContainment(_ url: URL) -> URL {
+    let fileManager = FileManager.default
+    var existingAncestor = url.standardizedFileURL
+    var unresolvedComponents: [String] = []
+
+    while !fileManager.fileExists(atPath: existingAncestor.path) {
+        let parent = existingAncestor.deletingLastPathComponent().standardizedFileURL
+        if parent.path == existingAncestor.path {
+            break
         }
 
-        let resolvedString = resolved.path
-        let rootString = workspace.rootPath.standardizedFileURL.path
-
-        guard resolvedString.hasPrefix(rootString) else {
-            return .failure(.escapesWorkspace)
+        let component = existingAncestor.lastPathComponent
+        if !component.isEmpty {
+            unresolvedComponents.insert(component, at: 0)
         }
-
-        return .success(resolved)
+        existingAncestor = parent
     }
 
-    // MARK: - read_file
+    var canonicalized = canonicalizedFileURL(existingAncestor)
+    for component in unresolvedComponents {
+        canonicalized.appendPathComponent(component)
+    }
+    return canonicalized.standardizedFileURL
+}
 
-    private func executeReadFile(_ args: [String: Any]) -> String {
-        guard let path = args["path"] as? String else {
+func isWithinDirectory(_ candidate: URL, root: URL) -> Bool {
+    let candidatePath = candidate.path
+    let rootPath = root.path
+
+    if candidatePath == rootPath {
+        return true
+    }
+
+    let rootWithSeparator = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+    return candidatePath.hasPrefix(rootWithSeparator)
+}
+
+func pathRelativeToRoot(_ candidate: URL, root: URL) -> String {
+    let candidatePath = candidate.path
+    let rootPath = root.path
+    if candidatePath == rootPath {
+        return ""
+    }
+
+    let rootWithSeparator = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+    return String(candidatePath.dropFirst(rootWithSeparator.count))
+}
+
+func resolvedPath(for path: String, workspace: WorkspaceContext) -> Result<URL, PathError> {
+    let canonicalRoot = canonicalizedFileURL(workspace.rootPath)
+
+    let candidate: URL
+    if path.hasPrefix("/") {
+        candidate = URL(fileURLWithPath: path)
+    } else {
+        candidate = canonicalRoot.appendingPathComponent(path)
+    }
+    let canonicalCandidate = canonicalizedPathForContainment(candidate)
+
+    guard isWithinDirectory(canonicalCandidate, root: canonicalRoot) else {
+        return .failure(.escapesWorkspace)
+    }
+
+    return .success(canonicalCandidate)
+}
+
+func truncateUTF8(_ string: String, maxBytes: Int) -> String {
+    guard string.utf8.count > maxBytes else { return string }
+    var index = string.startIndex
+    var byteCount = 0
+    while index < string.endIndex {
+        let nextIndex = string.index(after: index)
+        let charBytes = string[index..<nextIndex].utf8.count
+        if byteCount + charBytes > maxBytes { break }
+        byteCount += charBytes
+        index = nextIndex
+    }
+    return String(string[..<index])
+}
+
+// MARK: - ReadFileTool
+
+struct ReadFileTool: ToolHandler {
+    let toolName = ToolName.readFile
+    let workspace: WorkspaceContext
+
+    private static let maxFileSize = 1_048_576 // 1MB
+
+    func execute(arguments: [String: Any]) -> String {
+        guard let path = arguments["path"] as? String else {
             return "Error: Missing required parameter 'path'"
         }
 
         let resolved: URL
-        switch resolvedPath(for: path) {
+        switch resolvedPath(for: path, workspace: workspace) {
         case .success(let url): resolved = url
         case .failure: return "Error: Path escapes workspace root"
         }
@@ -125,23 +183,29 @@ class ToolExecutor {
             return "Error: Failed to read file: \(error.localizedDescription)"
         }
     }
+}
 
-    // MARK: - write_file
+// MARK: - WriteFileTool
 
-    private func executeWriteFile(_ args: [String: Any]) -> String {
+struct WriteFileTool: ToolHandler {
+    let toolName = ToolName.writeFile
+    let workspace: WorkspaceContext
+    var safeMode: Bool = false
+
+    func execute(arguments: [String: Any]) -> String {
         if safeMode {
             return "Error: write_file is disabled in safe mode"
         }
 
-        guard let path = args["path"] as? String else {
+        guard let path = arguments["path"] as? String else {
             return "Error: Missing required parameter 'path'"
         }
-        guard let content = args["content"] as? String else {
+        guard let content = arguments["content"] as? String else {
             return "Error: Missing required parameter 'content'"
         }
 
         let resolved: URL
-        switch resolvedPath(for: path) {
+        switch resolvedPath(for: path, workspace: workspace) {
         case .success(let url): resolved = url
         case .failure: return "Error: Path escapes workspace root"
         }
@@ -160,26 +224,32 @@ class ToolExecutor {
             return "Error: Failed to write file: \(error.localizedDescription)"
         }
     }
+}
 
-    // MARK: - edit_file
+// MARK: - EditFileTool
 
-    private func executeEditFile(_ args: [String: Any]) -> String {
+struct EditFileTool: ToolHandler {
+    let toolName = ToolName.editFile
+    let workspace: WorkspaceContext
+    var safeMode: Bool = false
+
+    func execute(arguments: [String: Any]) -> String {
         if safeMode {
             return "Error: edit_file is disabled in safe mode"
         }
 
-        guard let path = args["path"] as? String else {
+        guard let path = arguments["path"] as? String else {
             return "Error: Missing required parameter 'path'"
         }
-        guard let oldText = args["old_text"] as? String else {
+        guard let oldText = arguments["old_text"] as? String else {
             return "Error: Missing required parameter 'old_text'"
         }
-        guard let newText = args["new_text"] as? String else {
+        guard let newText = arguments["new_text"] as? String else {
             return "Error: Missing required parameter 'new_text'"
         }
 
         let resolved: URL
-        switch resolvedPath(for: path) {
+        switch resolvedPath(for: path, workspace: workspace) {
         case .success(let url): resolved = url
         case .failure: return "Error: Path escapes workspace root"
         }
@@ -206,27 +276,59 @@ class ToolExecutor {
             return "Error: Failed to edit file: \(error.localizedDescription)"
         }
     }
+}
 
-    // MARK: - bash
+// MARK: - BashTool
 
-    private func executeBash(_ args: [String: Any]) -> String {
-        guard let command = args["command"] as? String else {
+struct BashTool: ToolHandler {
+    let toolName = ToolName.bash
+    let workspace: WorkspaceContext
+    var safeMode: Bool = false
+
+    private static let bashTimeout: TimeInterval = 30
+    private static let shellPath = "/bin/zsh"
+
+    private static let safeModeAllowedPrefixes: [[String]] = [
+        ["git"], ["grep"], ["rg"], ["find"], ["ls"], ["cat"], ["head"], ["tail"], ["wc"],
+        ["swift", "test"], ["xcodebuild", "test"], ["npm", "test"], ["pytest"]
+    ]
+
+    func execute(arguments: [String: Any]) -> String {
+        guard let command = arguments["command"] as? String else {
             return "Error: Missing required parameter 'command'"
         }
 
         if safeMode {
-            let trimmed = command.trimmingCharacters(in: .whitespaces)
+            let parsedCommand: [String]
+            do {
+                parsedCommand = try Self.parseCommandArguments(command)
+            } catch {
+                return "Error: Invalid command syntax in safe mode"
+            }
+
             let allowed = Self.safeModeAllowedPrefixes.contains { prefix in
-                trimmed == prefix || trimmed.hasPrefix(prefix + " ")
+                parsedCommand.starts(with: prefix)
             }
             if !allowed {
                 return "Error: Command not allowed in safe mode"
             }
+
+            return runProcess(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                processArguments: parsedCommand
+            )
         }
 
+        return runProcess(
+            executableURL: URL(fileURLWithPath: Self.shellPath),
+            processArguments: ["-c", command]
+        )
+    }
+
+    private func runProcess(executableURL: URL, processArguments: [String]) -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: Self.shellPath)
-        process.arguments = ["-c", command]
+        process.executableURL = executableURL
+        process.arguments = processArguments
         process.currentDirectoryURL = workspace.rootPath
 
         let stdoutPipe = Pipe()
@@ -271,8 +373,8 @@ class ToolExecutor {
             output += stderr
         }
 
-        if output.utf8.count > Self.maxOutputSize {
-            output = truncateUTF8(output, maxBytes: Self.maxOutputSize) + "\n[Output truncated at 100KB]"
+        if output.utf8.count > ToolExecutor.maxOutputSize {
+            output = truncateUTF8(output, maxBytes: ToolExecutor.maxOutputSize) + "\n[Output truncated at 100KB]"
         }
 
         terminateLock.lock()
@@ -288,16 +390,104 @@ class ToolExecutor {
         return output
     }
 
-    // MARK: - grep_search
+    private enum SafeModeCommandParseError: Error {
+        case emptyCommand
+        case danglingEscape
+        case unterminatedQuote
+    }
 
-    private func executeGrepSearch(_ args: [String: Any]) -> String {
-        guard let pattern = args["pattern"] as? String else {
+    private static func parseCommandArguments(_ command: String) throws -> [String] {
+        let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw SafeModeCommandParseError.emptyCommand
+        }
+
+        var arguments: [String] = []
+        var current = ""
+        var inQuote: Character?
+        var isEscaping = false
+        var tokenStarted = false
+
+        for character in trimmed {
+            if isEscaping {
+                current.append(character)
+                isEscaping = false
+                tokenStarted = true
+                continue
+            }
+
+            if character == "\\" {
+                if inQuote == "'" {
+                    current.append(character)
+                } else {
+                    isEscaping = true
+                }
+                tokenStarted = true
+                continue
+            }
+
+            if let quote = inQuote {
+                if character == quote {
+                    inQuote = nil
+                } else {
+                    current.append(character)
+                }
+                tokenStarted = true
+                continue
+            }
+
+            if character == "'" || character == "\"" {
+                inQuote = character
+                tokenStarted = true
+                continue
+            }
+
+            if character.isWhitespace {
+                if tokenStarted {
+                    arguments.append(current)
+                    current = ""
+                    tokenStarted = false
+                }
+                continue
+            }
+
+            current.append(character)
+            tokenStarted = true
+        }
+
+        if isEscaping {
+            throw SafeModeCommandParseError.danglingEscape
+        }
+        if inQuote != nil {
+            throw SafeModeCommandParseError.unterminatedQuote
+        }
+        if tokenStarted {
+            arguments.append(current)
+        }
+        guard !arguments.isEmpty else {
+            throw SafeModeCommandParseError.emptyCommand
+        }
+
+        return arguments
+    }
+}
+
+// MARK: - GrepSearchTool
+
+struct GrepSearchTool: ToolHandler {
+    let toolName = ToolName.grepSearch
+    let workspace: WorkspaceContext
+
+    private static let grepPath = "/usr/bin/grep"
+
+    func execute(arguments: [String: Any]) -> String {
+        guard let pattern = arguments["pattern"] as? String else {
             return "Error: Missing required parameter 'pattern'"
         }
 
         let searchPath: String
-        if let path = args["path"] as? String {
-            switch resolvedPath(for: path) {
+        if let path = arguments["path"] as? String {
+            switch resolvedPath(for: path, workspace: workspace) {
             case .success(let url): searchPath = url.path
             case .failure: return "Error: Path escapes workspace root"
             }
@@ -306,7 +496,7 @@ class ToolExecutor {
         }
 
         var grepArgs = ["-rn", pattern, searchPath]
-        if let include = args["include"] as? String {
+        if let include = arguments["include"] as? String {
             grepArgs.insert("--include=\(include)", at: 0)
         }
 
@@ -315,9 +505,10 @@ class ToolExecutor {
         process.arguments = grepArgs
         process.currentDirectoryURL = workspace.rootPath
 
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
 
         do {
             try process.run()
@@ -327,30 +518,56 @@ class ToolExecutor {
 
         process.waitUntilExit()
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        var output = String(data: data, encoding: .utf8) ?? ""
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        let exitCode = process.terminationStatus
 
+        if exitCode == 1 {
+            return "No matches found"
+        }
+
+        let stderr = String(data: stderrData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if exitCode != 0 {
+            if !stderr.isEmpty {
+                return "Error: grep failed with exit code \(exitCode): \(stderr)"
+            }
+            return "Error: grep failed with exit code \(exitCode)"
+        }
+
+        var output = String(data: stdoutData, encoding: .utf8) ?? ""
         if output.isEmpty {
             return "No matches found"
         }
 
-        if output.utf8.count > Self.maxOutputSize {
-            output = truncateUTF8(output, maxBytes: Self.maxOutputSize) + "\n[Output truncated at 100KB]"
+        if output.utf8.count > ToolExecutor.maxOutputSize {
+            output = truncateUTF8(output, maxBytes: ToolExecutor.maxOutputSize) + "\n[Output truncated at 100KB]"
         }
 
         return output
     }
+}
 
-    // MARK: - find_files
+// MARK: - FindFilesTool
 
-    private func executeFindFiles(_ args: [String: Any]) -> String {
-        guard let pattern = args["pattern"] as? String else {
+struct FindFilesTool: ToolHandler {
+    let toolName = ToolName.findFiles
+    let workspace: WorkspaceContext
+
+    private static let maxFindResults = 200
+
+    private static let skippedDirectories: Set<String> = [
+        ".git", ".build", "node_modules"
+    ]
+
+    func execute(arguments: [String: Any]) -> String {
+        guard let pattern = arguments["pattern"] as? String else {
             return "Error: Missing required parameter 'pattern'"
         }
 
         let searchRoot: URL
-        if let path = args["path"] as? String {
-            switch resolvedPath(for: path) {
+        if let path = arguments["path"] as? String {
+            switch resolvedPath(for: path, workspace: workspace) {
             case .success(let url): searchRoot = url
             case .failure: return "Error: Path escapes workspace root"
             }
@@ -370,7 +587,8 @@ class ToolExecutor {
         }
 
         var results: [String] = []
-        let rootPath = workspace.rootPath.standardizedFileURL.path
+        let canonicalWorkspaceRoot = canonicalizedFileURL(workspace.rootPath)
+        let canonicalSearchRoot = canonicalizedFileURL(searchRoot)
 
         while let url = enumerator.nextObject() as? URL {
             let filename = url.lastPathComponent
@@ -380,13 +598,29 @@ class ToolExecutor {
                 continue
             }
 
-            if predicate.evaluate(with: filename) {
-                let fullPath = url.standardizedFileURL.path
-                if fullPath.hasPrefix(rootPath) {
-                    let relative = String(fullPath.dropFirst(rootPath.count))
-                        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                    results.append(relative)
-                }
+            let canonicalURL = canonicalizedFileURL(url)
+            guard isWithinDirectory(canonicalURL, root: canonicalWorkspaceRoot),
+                  isWithinDirectory(canonicalURL, root: canonicalSearchRoot) else {
+                continue
+            }
+
+            let workspaceRelative = pathRelativeToRoot(canonicalURL, root: canonicalWorkspaceRoot)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let searchRelative = pathRelativeToRoot(canonicalURL, root: canonicalSearchRoot)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let workspaceRelativeWithLeadingSlash = "/" + workspaceRelative
+            let searchRelativeWithLeadingSlash = "/" + searchRelative
+
+            // Support both basename globs (*.swift) and path globs (src/*.ts, **/*).
+            let matchesPattern =
+                predicate.evaluate(with: filename)
+                || predicate.evaluate(with: searchRelative)
+                || predicate.evaluate(with: workspaceRelative)
+                || predicate.evaluate(with: searchRelativeWithLeadingSlash)
+                || predicate.evaluate(with: workspaceRelativeWithLeadingSlash)
+
+            if matchesPattern {
+                results.append(workspaceRelative)
 
                 if results.count >= Self.maxFindResults {
                     results.append("[Results truncated at \(Self.maxFindResults) entries]")
