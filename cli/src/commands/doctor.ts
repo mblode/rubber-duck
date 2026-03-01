@@ -1,22 +1,20 @@
 import { styleText } from "node:util";
+import { intro, log, outro } from "@clack/prompts";
 import type { Command } from "commander";
 import { DaemonClient } from "../client.js";
 import { runHealthChecks } from "../health-checks.js";
 import type { DoctorCheck } from "../types.js";
 
-function statusIcon(status: DoctorCheck["status"]): string {
-  if (status === "ok") {
-    return styleText("green", "ok");
+function renderCheck(check: DoctorCheck): void {
+  const label = styleText("bold", check.name.padEnd(14));
+  const message = `${label} ${check.message}`;
+  if (check.status === "ok") {
+    log.success(message);
+  } else if (check.status === "warn") {
+    log.warn(message);
+  } else {
+    log.error(message);
   }
-  if (status === "warn") {
-    return styleText("yellow", "warn");
-  }
-  return styleText("red", "fail");
-}
-
-function formatCheck(check: DoctorCheck): string {
-  const name = check.name.padEnd(12);
-  return `  ${name} ${statusIcon(check.status).padEnd(14)}  ${check.message}`;
 }
 
 function mergeDaemonChecks(
@@ -57,17 +55,25 @@ export function registerDoctorCommand(program: Command): void {
     .command("doctor")
     .description("Check system health and dependencies")
     .action(async () => {
-      console.log(styleText("bold", "duck doctor\n"));
+      intro("duck doctor");
 
       const checks = runHealthChecks("client");
       await fetchDaemonChecks(checks);
 
       for (const check of checks) {
-        console.log(formatCheck(check));
+        renderCheck(check);
       }
 
-      if (checks.some((c) => c.status === "fail")) {
+      const hasFail = checks.some((c) => c.status === "fail");
+      const hasWarn = checks.some((c) => c.status === "warn");
+
+      if (hasFail) {
+        outro(styleText("red", "Some checks failed."));
         process.exit(1);
+      } else if (hasWarn) {
+        outro(styleText("yellow", "Ready with warnings."));
+      } else {
+        outro(styleText("green", "All checks passed."));
       }
     });
 }

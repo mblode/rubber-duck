@@ -21,9 +21,16 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
     // Session configuration
     var model: String = "gpt-realtime-1.5"
     var voice: String = "marin"
-    var vadEagerness: String = "medium"
     var instructions: String = ""
-    var tools: [[String: Any]] = []
+    var tools: [[String: Any]] = [] {
+        didSet {
+            guard connectionState == .connected,
+                  startupSessionUpdateAcknowledged,
+                  !toolsIncludedInStartupConfig else { return }
+            toolsSessionUpdateSent = false
+            sendToolsSessionConfigIfNeeded()
+        }
+    }
 
     private let parser = RealtimeMessageParser()
     private var webSocketTask: URLSessionWebSocketTask?
@@ -157,6 +164,7 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             "item": [
                 "type": "function_call_output",
                 "call_id": callId,
+                "status": "completed",
                 "output": output
             ]
         ]
@@ -187,6 +195,10 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
     }
 
     func updateSession(config: [String: Any]) {
+        guard let type = config["type"] as? String, type == "realtime" else {
+            logError("RealtimeClient: Ignoring session.update without session.type='realtime'")
+            return
+        }
         var event: [String: Any] = [
             "type": "session.update"
         ]
@@ -344,6 +356,7 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
         didNotifySessionReady = true
         sessionReadyTimeoutWorkItem?.cancel()
         sessionReadyTimeoutWorkItem = nil
+        latestErrorMessage = nil
         scheduleReconnectAttemptResetAfterStabilityWindow()
         flushBufferedPreReadyAudioIfNeeded(reason: "session_ready_\(source)")
         logInfo("RealtimeClient[\(connectionTraceID)]: Session ready (\(source))")
@@ -352,68 +365,37 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
 
     private func baseSessionConfig(profile: StartupConfigProfile) -> [String: Any] {
         let includeInstructions = profile == .full
-        let inputAudioTranscription: [String: Any] = [
-            "model": "gpt-4o-mini-transcribe"
+        let audioFormat: [String: Any] = [
+            "type": "audio/pcm",
+            "rate": Int(AudioConstants.sampleRate)
         ]
         let turnDetection: [String: Any] = [
-            "type": "semantic_vad",
-            "eagerness": vadEagerness,
-            "interrupt_response": true,
+            "type": "server_vad",
+            "threshold": NSDecimalNumber(string: "0.72"),
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 800,
+            "interrupt_response": false,
             "create_response": true
         ]
+        let inputAudio: [String: Any] = [
+            "format": audioFormat,
+            "turn_detection": turnDetection,
+            "transcription": ["model": "gpt-4o-mini-transcribe"],
+            "noise_reduction": ["type": "near_field"]
+        ]
 
-        var sessionConfig: [String: Any]
-        switch profile {
-        case .full:
-            sessionConfig = [
-                "type": "realtime",
-                "model": activeModelForConnection,
-                "output_modalities": ["audio"],
-                "audio": [
-                    "output": [
-                        "format": [
-                            "type": "audio/pcm",
-                            "rate": Int(AudioConstants.sampleRate)
-                        ],
-                        "voice": voice
-                    ],
-                    "input": [
-                        "format": [
-                            "type": "audio/pcm",
-                            "rate": Int(AudioConstants.sampleRate)
-                        ],
-                        "turn_detection": turnDetection,
-                        "transcription": inputAudioTranscription,
-                        "noise_reduction": [
-                            "type": "near_field"
-                        ]
-                    ]
-                ] as [String: Any]
-            ]
-        case .minimalRetry:
-            sessionConfig = [
-                "type": "realtime",
-                "model": activeModelForConnection,
-                "output_modalities": ["audio"],
-                "audio": [
-                    "output": [
-                        "format": [
-                            "type": "audio/pcm",
-                            "rate": Int(AudioConstants.sampleRate)
-                        ],
-                        "voice": voice
-                    ],
-                    "input": [
-                        "format": [
-                            "type": "audio/pcm",
-                            "rate": Int(AudioConstants.sampleRate)
-                        ],
-                        "turn_detection": turnDetection,
-                        "transcription": inputAudioTranscription
-                    ]
-                ] as [String: Any]
-            ]
-        }
+        var sessionConfig: [String: Any] = [
+            "type": "realtime",
+            "model": activeModelForConnection,
+            "output_modalities": ["audio"],
+            "audio": [
+                "output": [
+                    "format": audioFormat,
+                    "voice": voice
+                ],
+                "input": inputAudio
+            ] as [String: Any]
+        ]
 
         if includeInstructions, !instructions.isEmpty {
             sessionConfig["instructions"] = instructions
@@ -769,8 +751,10 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
                 delegate?.realtimeClient(self, didReceiveConversationItemCreated: item)
             }
 
-        case .conversationItemDone:
-            break
+        case .conversationItemDone(let item):
+            if !item.isEmpty {
+                delegate?.realtimeClient(self, didReceiveConversationItemDone: item)
+            }
 
         case .conversationItemTruncated:
             logDebug("RealtimeClient: Conversation item truncated")
@@ -779,6 +763,9 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             if itemId != nil || contentIndex != nil {
                 delegate?.realtimeClient(self, didUpdateActiveAudioOutput: itemId, contentIndex: contentIndex)
             }
+
+        case .outputItemFunctionCall(let call):
+            delegate?.realtimeClient(self, didReceiveFunctionCallItem: call)
 
         case .rateLimitsUpdated(let rateLimits):
             if !rateLimits.isEmpty {
@@ -838,6 +825,7 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             reconnectAttempt: reconnectAttempt,
             maxReconnectAttempts: maxReconnectAttempts
         ) {
+            latestErrorMessage = nil
             reconnectAttempt += 1
             let delay = pow(2.0, Double(reconnectAttempt - 1)) // 1s, 2s, 4s
             setConnectionState(.reconnecting)

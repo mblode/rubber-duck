@@ -19,9 +19,7 @@ struct RealtimeReconnectionPolicy {
     }
 
     static func resolvedModelForConnectionAttempt(configuredModel: String, reconnectAttempt: Int) -> String {
-        if reconnectAttempt >= 2, configuredModel == "gpt-realtime-1.5" {
-            return "gpt-realtime-mini"
-        }
+        _ = reconnectAttempt
         return configuredModel
     }
 }

@@ -285,6 +285,18 @@ final class RealtimeMessageParserTests: XCTestCase {
         XCTAssertEqual(item["id"] as? String, "item_5")
     }
 
+    func testParsesConversationItemDone() throws {
+        let data = jsonData([
+            "type": "conversation.item.done",
+            "item": ["id": "item_5_done", "type": "message"]
+        ])
+        let event = try parser.parse(data)
+        guard case .conversationItemDone(let item) = event else {
+            return XCTFail("Expected conversationItemDone, got \(event)")
+        }
+        XCTAssertEqual(item["id"] as? String, "item_5_done")
+    }
+
     // MARK: - Rate Limits
 
     func testParsesRateLimitsUpdated() throws {
@@ -316,6 +328,26 @@ final class RealtimeMessageParserTests: XCTestCase {
         }
         XCTAssertEqual(itemId, "item_6")
         XCTAssertEqual(contentIndex, 0)
+    }
+
+    func testParsesOutputItemFunctionCall() throws {
+        let data = jsonData([
+            "type": "response.output_item.done",
+            "item": [
+                "id": "item_7",
+                "type": "function_call",
+                "call_id": "call_7",
+                "name": "find_files",
+                "arguments": "{\"pattern\":\"**/*.swift\"}"
+            ]
+        ])
+        let event = try parser.parse(data)
+        guard case .outputItemFunctionCall(let call) = event else {
+            return XCTFail("Expected outputItemFunctionCall, got \(event)")
+        }
+        XCTAssertEqual(call.callId, "call_7")
+        XCTAssertEqual(call.name, "find_files")
+        XCTAssertEqual(call.arguments, "{\"pattern\":\"**/*.swift\"}")
     }
 
     // MARK: - Unhandled Events

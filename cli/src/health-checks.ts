@@ -8,9 +8,10 @@ import {
   PI_BINARY_OVERRIDE_ENV,
   PI_DEFAULT_THINKING,
   PI_MODEL_OVERRIDE_ENV,
+  PI_PROVIDER_OVERRIDE_ENV,
   PI_THINKING_OVERRIDE_ENV,
-  PROVIDER_API_KEY_VARS,
   resolveDefaultPiModel,
+  resolveDefaultPiProvider,
   SOCKET_PATH,
 } from "./constants.js";
 import type { DoctorCheck } from "./types.js";
@@ -94,15 +95,30 @@ function resolvePiModelSource(model: string | null): string {
   return "Pi default";
 }
 
+function resolvePiProviderSource(provider: string | null): string {
+  if (process.env[PI_PROVIDER_OVERRIDE_ENV]) {
+    return `${PI_PROVIDER_OVERRIDE_ENV} env var`;
+  }
+  if (provider) {
+    return "API key auto-detect";
+  }
+  return "Pi default";
+}
+
 function addPiModelCheck(checks: DoctorCheck[]): void {
   const model = resolveDefaultPiModel();
+  const provider = resolveDefaultPiProvider();
   const thinking =
     process.env[PI_THINKING_OVERRIDE_ENV]?.trim() ?? PI_DEFAULT_THINKING;
-  const source = resolvePiModelSource(model);
+  const modelSource = resolvePiModelSource(model);
+  const providerSource = resolvePiProviderSource(provider);
   checks.push({
     name: "pi_model",
     status: "ok",
-    message: `${model ?? "Pi default"}  thinking:${thinking}  (${source})`,
+    message:
+      `${provider ?? "Pi default"}/${model ?? "Pi default"}  ` +
+      `thinking:${thinking}  ` +
+      `(model:${modelSource}, provider:${providerSource})`,
   });
 }
 
@@ -182,22 +198,28 @@ function addConfigAndLogChecks(
 }
 
 function addProvidersCheck(checks: DoctorCheck[]): void {
-  const foundProviders = PROVIDER_API_KEY_VARS.filter((v) => process.env[v]);
-  if (foundProviders.length > 0) {
-    checks.push({
-      name: "providers",
-      status: "ok",
-      message: foundProviders
-        .map((v) => v.replace("_API_KEY", "").toLowerCase())
-        .join(", "),
-    });
-  } else {
+  const providers: string[] = [];
+  if (process.env.OPENAI_API_KEY) {
+    providers.push("openai");
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    providers.push("anthropic");
+  }
+
+  if (providers.length === 0) {
     checks.push({
       name: "providers",
       status: "warn",
-      message: "No API keys found. Set ANTHROPIC_API_KEY or use `pi /login`",
+      message: "No API keys found. Set OPENAI_API_KEY or use `pi /login`",
     });
+    return;
   }
+
+  checks.push({
+    name: "providers",
+    status: "ok",
+    message: providers.join(", "),
+  });
 }
 
 function addAppCheck(checks: DoctorCheck[], context: HealthCheckContext): void {

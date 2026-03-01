@@ -58,6 +58,8 @@ class AudioPlaybackManager: ObservableObject {
                let sharedPlayerNode = audioManager.playerNode {
                 self.teardownFallbackPlaybackEngine()
                 playerNode = sharedPlayerNode
+            } else if self.audioManager?.isCaptureStartupInProgress == true {
+                playerNode = nil
             } else {
                 playerNode = self.ensureFallbackPlaybackNode()
             }
@@ -189,11 +191,17 @@ class AudioPlaybackManager: ObservableObject {
                let sharedPlayerNode = audioManager.playerNode {
                 self.teardownFallbackPlaybackEngine()
                 playerNode = sharedPlayerNode
+            } else if self.audioManager?.isCaptureStartupInProgress == true {
+                playerNode = nil
             } else {
                 playerNode = self.ensureFallbackPlaybackNode()
             }
 
             guard let playerNode else {
+                if self.audioManager?.isCaptureStartupInProgress == true {
+                    logDebug("AudioPlaybackManager: Capture startup in progress, deferring fallback playback engine")
+                    return
+                }
                 self.droppedChunksBeforeReady += 1
                 logDebug("AudioPlaybackManager: No player node, dropping audio chunk (\(self.droppedChunksBeforeReady) dropped before ready)")
                 return
@@ -219,6 +227,9 @@ class AudioPlaybackManager: ObservableObject {
                 stats.scheduledSamples += sampleCount
                 self.itemSamples[key] = stats
             }
+            DispatchQueue.main.async {
+                self.isPlaying = true
+            }
 
             playerNode.scheduleBuffer(buffer) { [weak self] in
                 self?.playbackQueue.async {
@@ -228,6 +239,13 @@ class AudioPlaybackManager: ObservableObject {
                         var stats = self.itemSamples[key, default: AudioPlaybackItemSamples()]
                         stats.playedSamples += sampleCount
                         self.itemSamples[key] = stats
+                    }
+
+                    if self.totalSamplesScheduled > 0 && self.totalSamplesPlayed >= self.totalSamplesScheduled {
+                        self.totalSamplesPlayed = self.totalSamplesScheduled
+                        DispatchQueue.main.async {
+                            self.isPlaying = false
+                        }
                     }
                 }
             }

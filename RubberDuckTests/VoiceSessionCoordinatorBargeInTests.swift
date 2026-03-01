@@ -7,6 +7,8 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
     private final class MockAudioManager: VoiceAudioManaging {
         var isStreaming: Bool = false
         var isMicrophonePermissionDenied: Bool = false
+        var muteInput: Bool = false
+        var isEchoCancellationActive: Bool = true
 
         func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)?) {
             isStreaming = true
@@ -60,13 +62,15 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
 
     private struct Harness {
         let coordinator: VoiceSessionCoordinator
+        let audioManager: MockAudioManager
         let realtimeClient: MockRealtimeClient  // from TestMocks.swift
         let playbackManager: MockPlaybackManager
         let defaultsSuiteName: String
     }
 
-    private func makeHarness(bargeInDelay: TimeInterval = 0.05) -> Harness {
+    private func makeHarness(bargeInDelay: TimeInterval = 0.05, echoCancellationActive: Bool = true) -> Harness {
         let audioManager = MockAudioManager()
+        audioManager.isEchoCancellationActive = echoCancellationActive
         let playbackManager = MockPlaybackManager()
         let realtimeClient = MockRealtimeClient()
         let overlay = MockOverlayPresenter()
@@ -86,6 +90,7 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
 
         return Harness(
             coordinator: coordinator,
+            audioManager: audioManager,
             realtimeClient: realtimeClient,
             playbackManager: playbackManager,
             defaultsSuiteName: suiteName
@@ -132,6 +137,9 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
+        // Allow the assistant-audio guard window to pass before a sustained
+        // user interruption is detected as barge-in.
+        try await Task.sleep(nanoseconds: 260_000_000)
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
         try await Task.sleep(nanoseconds: 120_000_000)
 
@@ -142,5 +150,31 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1)
         XCTAssertGreaterThanOrEqual(harness.playbackManager.startPlaybackCallCount, 1)
         XCTAssertEqual(harness.coordinator.sessionState, .listening)
+    }
+
+    func test_speechStartedDuringSpeakingWithoutAEC_isIgnoredEvenIfMuteRaceOccurs() async throws {
+        let harness = makeHarness(bargeInDelay: 0.03, echoCancellationActive: false)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-no-aec",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Simulate a transient mute race on hardware without AEC.
+        harness.audioManager.muteInput = false
+
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0)
+        XCTAssertTrue(harness.realtimeClient.truncateCalls.isEmpty)
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 }

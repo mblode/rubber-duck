@@ -23,8 +23,9 @@ enum RealtimeEvent {
     case inputAudioTranscriptionCompleted(transcript: String, itemId: String?)
     case inputAudioTranscriptionFailed
     case conversationItemCreated(item: [String: Any])
-    case conversationItemDone
+    case conversationItemDone(item: [String: Any])
     case conversationItemTruncated
+    case outputItemFunctionCall(call: RealtimeFunctionCallItem)
     case outputItemUpdated(itemId: String?, contentIndex: Int?)
     case rateLimitsUpdated(rateLimits: [[String: Any]])
     case unhandled(type: String)
@@ -134,13 +135,21 @@ struct RealtimeMessageParser {
             return .conversationItemCreated(item: item)
 
         case "conversation.item.done":
-            return .conversationItemDone
+            let item = json["item"] as? [String: Any] ?? [:]
+            return .conversationItemDone(item: item)
 
         case "conversation.item.truncated":
             return .conversationItemTruncated
 
         case "response.output_item.created", "response.output_item.added", "response.output_item.done",
              "response.content_part.added", "response.content_part.done":
+            // Function-call items are often emitted as in-progress shells on
+            // `created`/`added` and only contain complete arguments on `done`.
+            if type == "response.output_item.done",
+               let item = json["item"] as? [String: Any],
+               let functionCall = parseFunctionCallItem(item) {
+                return .outputItemFunctionCall(call: functionCall)
+            }
             let itemId = parseEventItemID(json)
             let contentIndex = parseEventContentIndex(json)
             return .outputItemUpdated(itemId: itemId, contentIndex: contentIndex)
@@ -224,5 +233,24 @@ struct RealtimeMessageParser {
             return Int(text)
         }
         return nil
+    }
+
+    private func parseFunctionCallItem(_ item: [String: Any]) -> RealtimeFunctionCallItem? {
+        guard let type = item["type"] as? String, type == "function_call" else {
+            return nil
+        }
+        guard let callId = item["call_id"] as? String,
+              let name = item["name"] as? String,
+              let arguments = item["arguments"] as? String,
+              !callId.isEmpty,
+              !name.isEmpty else {
+            return nil
+        }
+
+        return RealtimeFunctionCallItem(
+            callId: callId,
+            name: name,
+            arguments: arguments
+        )
     }
 }

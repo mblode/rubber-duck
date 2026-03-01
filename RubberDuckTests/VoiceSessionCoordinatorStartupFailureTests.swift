@@ -21,6 +21,24 @@ final class VoiceSessionCoordinatorStartupFailureTests: XCTestCase {
         }
     }
 
+    private final class DeferredAudioManager: VoiceAudioManaging {
+        var isStreaming: Bool = false
+        var isMicrophonePermissionDenied: Bool = false
+        private var onError: ((Error) -> Void)?
+
+        func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)?) {
+            self.onError = onError
+        }
+
+        func stopStreaming() {
+            isStreaming = false
+        }
+
+        func emitDeferredError() {
+            onError?(StartupFailure())
+        }
+    }
+
     private final class MockPlaybackManager: VoiceAudioPlayback {
         var isPlaying: Bool = false
         var stopPlaybackCallCount = 0
@@ -90,6 +108,44 @@ final class VoiceSessionCoordinatorStartupFailureTests: XCTestCase {
                 return false
             }),
             "Expected microphone startup failure to surface as overlay error"
+        )
+    }
+
+    func test_deferredAudioError_afterDisconnect_isIgnored() async throws {
+        let audioManager = DeferredAudioManager()
+        let playbackManager = MockPlaybackManager()
+        let realtimeClient = MockRealtimeClient()
+        realtimeClient.connectionState = .connected
+        let overlay = MockOverlayPresenter()
+        let suiteName = "VoiceSessionCoordinatorStartupFailureTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let coordinator = VoiceSessionCoordinator(
+            audioManager: audioManager,
+            playbackManager: playbackManager,
+            realtimeClient: realtimeClient,
+            overlay: overlay,
+            userDefaults: defaults,
+            bargeInConfirmationDelaySeconds: 0.05
+        )
+
+        coordinator.realtimeClientDidBecomeReady(realtimeClient)
+        coordinator.disconnectSession()
+        audioManager.emitDeferredError()
+        try await Task.sleep(nanoseconds: 30_000_000)
+
+        XCTAssertEqual(coordinator.sessionState, .idle)
+        XCTAssertFalse(
+            overlay.shownStates.contains(where: {
+                if case .error = $0 {
+                    return true
+                }
+                return false
+            }),
+            "Deferred startup errors after disconnect should be ignored"
         )
     }
 }

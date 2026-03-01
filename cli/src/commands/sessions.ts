@@ -1,8 +1,15 @@
+import { homedir } from "node:os";
 import { styleText } from "node:util";
+import { log, S_STEP_SUBMIT } from "@clack/prompts";
 import type { Command } from "commander";
 import { DaemonClient } from "../client.js";
 import { ensureDaemon } from "../ensure-daemon.js";
 import { formatTimestamp } from "../utils.js";
+
+function shortenPath(p: string): string {
+  const home = homedir();
+  return p.startsWith(home) ? `~${p.slice(home.length)}` : p;
+}
 
 interface SessionInfo {
   id: string;
@@ -19,6 +26,7 @@ export function registerSessionsCommand(program: Command): void {
     .description("List sessions")
     .option("--all", "Show sessions for all workspaces")
     .option("--json", "Output as JSON")
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Branches handle table header, ANSI-aware padding, and per-row formatting for compact output.
     .action(async (options) => {
       try {
         await ensureDaemon();
@@ -29,7 +37,7 @@ export function registerSessionsCommand(program: Command): void {
         });
 
         if (!response.ok) {
-          console.error(styleText("red", `Error: ${response.error}`));
+          log.error(response.error ?? "Unknown error");
           client.close();
           process.exit(1);
         }
@@ -43,9 +51,7 @@ export function registerSessionsCommand(program: Command): void {
         }
 
         if (sessions.length === 0) {
-          console.log(
-            styleText("dim", "No sessions yet. Run `duck` to start.")
-          );
+          log.info("No sessions yet. Run `duck` to start.");
           client.close();
           return;
         }
@@ -57,7 +63,7 @@ export function registerSessionsCommand(program: Command): void {
         );
         const pathWidth = Math.max(
           12,
-          ...sessions.map((s) => s.workspacePath.length)
+          ...sessions.map((s) => shortenPath(s.workspacePath).length)
         );
 
         console.log(
@@ -68,10 +74,13 @@ export function registerSessionsCommand(program: Command): void {
         );
 
         for (const s of sessions) {
-          const name = s.isActive
-            ? `${s.name} ${styleText("cyan", "*")}`
-            : s.name;
-          const displayName = name.padEnd(nameWidth);
+          // Padding must be calculated from visible width — ANSI codes in the
+          // styled marker inflate string length and break padEnd alignment.
+          const visibleWidth = s.name.length + (s.isActive ? 2 : 0);
+          const trailing = " ".repeat(Math.max(0, nameWidth - visibleWidth));
+          const displayName = s.isActive
+            ? `${s.name} ${styleText("green", S_STEP_SUBMIT)}${trailing}`
+            : s.name.padEnd(nameWidth);
 
           let status: string;
           if (s.isRunning) {
@@ -83,18 +92,13 @@ export function registerSessionsCommand(program: Command): void {
           const lastActive = formatTimestamp(s.lastActiveAt);
 
           console.log(
-            `${displayName}  ${s.workspacePath.padEnd(pathWidth)}  ${status}  ${styleText("dim", lastActive)}`
+            `${displayName}  ${shortenPath(s.workspacePath).padEnd(pathWidth)}  ${status}  ${styleText("dim", lastActive)}`
           );
         }
 
         client.close();
       } catch (err) {
-        console.error(
-          styleText(
-            "red",
-            `Error: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
+        log.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
       }
     });

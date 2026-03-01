@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -67,9 +67,7 @@ function waitForEvent(
 // Test suite
 // ---------------------------------------------------------------------------
 
-const hasApiKey = Boolean(
-  process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY
-);
+const hasApiKey = Boolean(process.env.OPENAI_API_KEY);
 
 describe.skipIf(!hasApiKey)("duck say E2E — daemon integration", () => {
   let daemonProcess: ChildProcess;
@@ -168,4 +166,32 @@ describe.skipIf(!hasApiKey)("duck say E2E — daemon integration", () => {
 
     client.close();
   }, 70_000);
+
+  it("voice_tool_call: reads a file via TypeScript voice-tools", async () => {
+    const client = await DaemonClient.connect({ socketPath });
+
+    // Write a test file into the workspace (tmpDir)
+    const testContent = "voice-tools-read-test-content";
+    await writeFile(join(tmpDir, "voice-test.txt"), testContent);
+
+    // Attach to get a session and workspace ID back
+    const attachResp = await client.request("attach", { path: tmpDir });
+    expect(attachResp.ok).toBe(true);
+
+    // Call voice_tool_call directly (bypasses Pi subprocess — pure daemon handler)
+    const toolResp = await client.request("voice_tool_call", {
+      callId: "test-call-1",
+      toolName: "read_file",
+      arguments: JSON.stringify({ path: "voice-test.txt" }),
+      workspacePath: tmpDir,
+    });
+
+    expect(toolResp.ok).toBe(true);
+    expect(toolResp.data).toBeDefined();
+    const data = toolResp.data as { callId: string; result: string };
+    expect(data.callId).toBe("test-call-1");
+    expect(data.result).toBe(testContent);
+
+    client.close();
+  }, 15_000);
 });

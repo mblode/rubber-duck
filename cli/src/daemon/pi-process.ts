@@ -7,6 +7,7 @@ import {
   PI_THINKING_OVERRIDE_ENV,
   PI_TOOLS,
   resolveDefaultPiModel,
+  resolveDefaultPiProvider,
   SESSIONS_DIR,
 } from "../constants.js";
 import type { PiEvent, PiRpcRequest, PiRpcResponse } from "../types.js";
@@ -24,6 +25,10 @@ type PiEventHandler = (event: PiEvent) => void;
 export class PiProcess {
   private readonly process: ChildProcess;
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly completedPromptAcks = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private readonly eventHandlers: PiEventHandler[] = [];
   private alive = true;
   private exitCode: number | null = null;
@@ -53,6 +58,10 @@ export class PiProcess {
     if (piModel) {
       args.push("--model", piModel);
     }
+    const piProvider = resolveDefaultPiProvider();
+    if (piProvider) {
+      args.push("--provider", piProvider);
+    }
     const piThinking =
       process.env[PI_THINKING_OVERRIDE_ENV]?.trim() ?? PI_DEFAULT_THINKING;
     args.push("--thinking", piThinking);
@@ -73,6 +82,7 @@ export class PiProcess {
     this.process.on("exit", (code) => {
       this.alive = false;
       this.exitCode = code;
+      this.clearCompletedPromptAcks();
       // Reject all pending requests
       for (const [id, pending] of this.pending) {
         clearTimeout(pending.timer);
@@ -83,6 +93,7 @@ export class PiProcess {
 
     this.process.on("error", (err) => {
       this.alive = false;
+      this.clearCompletedPromptAcks();
       for (const [id, pending] of this.pending) {
         clearTimeout(pending.timer);
         pending.reject(err);
@@ -125,7 +136,30 @@ export class PiProcess {
       if (pending) {
         clearTimeout(pending.timer);
         this.pending.delete(response.id);
+        if (pending.command === "prompt" && response.success) {
+          const cleanupTimer = setTimeout(() => {
+            this.completedPromptAcks.delete(response.id as string);
+          }, PI_COMMAND_TIMEOUT_MS);
+          this.completedPromptAcks.set(response.id, cleanupTimer);
+        }
         pending.resolve(response);
+        return;
+      }
+
+      if (
+        response.command === "prompt" &&
+        response.success === false &&
+        this.completedPromptAcks.has(response.id)
+      ) {
+        const cleanupTimer = this.completedPromptAcks.get(response.id);
+        if (cleanupTimer) {
+          clearTimeout(cleanupTimer);
+        }
+        this.completedPromptAcks.delete(response.id);
+        this.emitEvent({
+          type: "prompt_error",
+          error: response.error ?? "Prompt failed",
+        });
       }
       return;
     }
@@ -214,6 +248,7 @@ export class PiProcess {
   kill(): Promise<void> {
     return new Promise<void>((resolve) => {
       if (!this.alive) {
+        this.clearCompletedPromptAcks();
         resolve();
         return;
       }
@@ -225,11 +260,29 @@ export class PiProcess {
       }, 5000);
 
       this.process.once("exit", () => {
+        this.clearCompletedPromptAcks();
         clearTimeout(forceKillTimer);
         resolve();
       });
 
       this.process.kill("SIGTERM");
     });
+  }
+
+  private emitEvent(event: PiEvent): void {
+    for (const handler of this.eventHandlers) {
+      try {
+        handler(event);
+      } catch {
+        // Don't let handler errors crash the process
+      }
+    }
+  }
+
+  private clearCompletedPromptAcks(): void {
+    for (const timer of this.completedPromptAcks.values()) {
+      clearTimeout(timer);
+    }
+    this.completedPromptAcks.clear();
   }
 }

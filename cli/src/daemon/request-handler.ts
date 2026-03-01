@@ -14,6 +14,7 @@ import type { EventBus } from "./event-bus.js";
 import type { MetadataStore } from "./metadata-store.js";
 import type { PiProcessManager } from "./pi-process-manager.js";
 import type { SocketServer } from "./socket-server.js";
+import { executeVoiceTool } from "./voice-tools.js";
 
 interface RequestFor<M extends keyof DaemonRequestMap> {
   id: string;
@@ -28,6 +29,7 @@ export class RequestHandler {
   private readonly processManager: PiProcessManager;
   private readonly eventBus: EventBus;
   private readonly socketServer: SocketServer;
+  private voiceClientId: string | null = null;
 
   constructor(
     metadataStore: MetadataStore,
@@ -95,6 +97,12 @@ export class RequestHandler {
           return this.doctor(request);
         case "get_state":
           return await this.getState(request);
+        case "voice_connect":
+          return this.voiceConnect(clientId, request);
+        case "voice_tool_call":
+          return await this.voiceToolCall(request);
+        case "voice_state":
+          return this.voiceState(request);
         default: {
           const _exhaustive: never = request;
           return {
@@ -180,6 +188,20 @@ export class RequestHandler {
     this.metadataStore.updateWorkspace(workspace.id, {
       lastActiveSessionId: session.id,
     });
+
+    // Notify the Swift voice app immediately so it doesn't have to wait for metadata.json polling
+    if (this.voiceClientId) {
+      this.socketServer.sendToClient(this.voiceClientId, {
+        event: "voice_session_changed",
+        sessionId: session.id,
+        data: {
+          type: "voice_session_changed" as const,
+          sessionId: session.id,
+          sessionName: session.name,
+          workspacePath: workspace.path,
+        },
+      });
+    }
 
     return {
       id: request.id,
@@ -285,6 +307,9 @@ export class RequestHandler {
     request: RequestFor<"unfollow">
   ): DaemonResponse {
     this.eventBus.unsubscribe(clientId);
+    if (clientId === this.voiceClientId) {
+      this.voiceClientId = null;
+    }
     return { id: request.id, ok: true };
   }
 
@@ -349,16 +374,7 @@ export class RequestHandler {
       };
     }
 
-    const proc = this.processManager.get(session.id);
-    if (!proc?.isAlive()) {
-      return {
-        id: request.id,
-        ok: false,
-        error: `Pi process for session "${session.name}" is not running`,
-      };
-    }
-
-    // Publish user utterance event for CLI rendering
+    // Publish user utterance event for CLI stream rendering
     this.eventBus.publish(session.id, {
       type: "message_start",
       message: {
@@ -367,6 +383,29 @@ export class RequestHandler {
         timestamp: new Date().toISOString(),
       },
     } as PiEvent);
+
+    // If voice app is connected, route to voice agent instead of Pi
+    if (this.voiceClientId) {
+      this.socketServer.sendToClient(this.voiceClientId, {
+        event: "voice_say",
+        sessionId: session.id,
+        data: { text: message },
+      });
+      return {
+        id: request.id,
+        ok: true,
+        data: { sessionId: session.id, sessionName: session.name },
+      };
+    }
+
+    const proc = this.processManager.get(session.id);
+    if (!proc?.isAlive()) {
+      return {
+        id: request.id,
+        ok: false,
+        error: `Pi process for session "${session.name}" is not running`,
+      };
+    }
 
     // Send prompt to Pi
     const response = await proc.sendCommand("prompt", { message });
@@ -483,5 +522,95 @@ export class RequestHandler {
         piState: response.data,
       },
     };
+  }
+
+  private voiceConnect(
+    clientId: string,
+    request: RequestFor<"voice_connect">
+  ): DaemonResponse {
+    this.voiceClientId = clientId;
+
+    const activeSession = this.metadataStore.getActiveVoiceSession();
+    const workspace = activeSession
+      ? this.metadataStore.getWorkspace(activeSession.workspaceId)
+      : null;
+
+    return {
+      id: request.id,
+      ok: true,
+      data: {
+        connected: true,
+        sessionId: activeSession?.id ?? null,
+        sessionName: activeSession?.name ?? null,
+        workspacePath: workspace?.path ?? null,
+      },
+    };
+  }
+
+  private async voiceToolCall(
+    request: RequestFor<"voice_tool_call">
+  ): Promise<DaemonResponse> {
+    const {
+      callId,
+      toolName,
+      arguments: argsJson,
+      workspacePath,
+    } = request.params;
+
+    const activeSession = this.metadataStore.getActiveVoiceSession();
+    if (!activeSession) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "No active voice session for tool execution",
+      };
+    }
+
+    const activeWorkspace = this.metadataStore.getWorkspace(
+      activeSession.workspaceId
+    );
+    if (!activeWorkspace) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Active workspace not found for voice session",
+      };
+    }
+
+    // `workspacePath` from the voice client is advisory only. Use the active
+    // daemon workspace as the execution source-of-truth so minor path
+    // normalization differences (symlinks, casing, trailing slash) do not
+    // cause false tool failures mid-conversation.
+    void workspacePath;
+
+    const result = await executeVoiceTool(
+      toolName,
+      argsJson,
+      activeWorkspace.path
+    );
+
+    return {
+      id: request.id,
+      ok: true,
+      data: { callId, result },
+    };
+  }
+
+  private voiceState(request: RequestFor<"voice_state">): DaemonResponse {
+    const { state, sessionId } = request.params;
+
+    const session = this.resolveSessionRef(sessionId);
+
+    if (session) {
+      // Publish a setStatus event so `duck follow` clients can see voice activity.
+      this.eventBus.publish(session.id, {
+        type: "extension_ui_request",
+        id: `voice-state-${Date.now()}`,
+        method: "setStatus",
+        message: `voice:${state}`,
+      } as PiEvent);
+    }
+
+    return { id: request.id, ok: true };
   }
 }

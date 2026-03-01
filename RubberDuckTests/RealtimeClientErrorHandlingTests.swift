@@ -90,23 +90,23 @@ final class RealtimeClientErrorHandlingTests: XCTestCase {
         )
     }
 
-    func test_resolvedModelForConnectionAttempt_secondRetry_fallsBackToMini() {
+    func test_resolvedModelForConnectionAttempt_secondRetry_keepsConfiguredModel() {
         XCTAssertEqual(
             RealtimeReconnectionPolicy.resolvedModelForConnectionAttempt(
                 configuredModel: "gpt-realtime-1.5",
                 reconnectAttempt: 2
             ),
-            "gpt-realtime-mini"
+            "gpt-realtime-1.5"
         )
     }
 
     func test_resolvedModelForConnectionAttempt_customModel_notOverridden() {
         XCTAssertEqual(
             RealtimeReconnectionPolicy.resolvedModelForConnectionAttempt(
-                configuredModel: "gpt-4o-realtime-preview",
+                configuredModel: "custom-model",
                 reconnectAttempt: 3
             ),
-            "gpt-4o-realtime-preview"
+            "custom-model"
         )
     }
 

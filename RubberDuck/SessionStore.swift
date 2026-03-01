@@ -30,6 +30,8 @@ struct SessionRecord: Identifiable, Hashable {
 enum SessionStoreError: Error {
     case databaseUnavailable
     case sqliteError(String)
+    case sessionWorkspaceMismatch(sessionID: String, workspaceID: String, existingWorkspaceID: String)
+    case sessionNotFoundInWorkspace(sessionID: String, workspaceID: String)
 }
 
 final class SessionStore {
@@ -39,9 +41,10 @@ final class SessionStore {
     private let sessionsDirectoryURL: URL
     private let queue = DispatchQueue(label: "co.blode.rubber-duck.session-store")
 
-    init(fileManager: FileManager = .default) {
+    init(fileManager: FileManager = .default, appSupportRootURL: URL? = nil) {
         self.fileManager = fileManager
-        let sessionsDirectory = AppSupportPaths.sessionsDirectoryURL(fileManager: fileManager)
+        let rootURL = appSupportRootURL ?? AppSupportPaths.rootURL(fileManager: fileManager)
+        let sessionsDirectory = rootURL.appendingPathComponent("sessions", isDirectory: true)
         self.databaseURL = sessionsDirectory.appendingPathComponent("metadata.sqlite")
         self.sessionsDirectoryURL = sessionsDirectory
 
@@ -147,6 +150,13 @@ final class SessionStore {
             let resolvedHistoryFile = historyFile ?? defaultHistoryFilePath(forSessionID: id)
 
             if let existing = try sessionInternal(id: id) {
+                guard existing.workspaceID == workspaceID else {
+                    throw SessionStoreError.sessionWorkspaceMismatch(
+                        sessionID: id,
+                        workspaceID: workspaceID,
+                        existingWorkspaceID: existing.workspaceID
+                    )
+                }
                 return existing
             }
 
@@ -233,13 +243,20 @@ final class SessionStore {
                     }
                 )
 
-                try execute(
-                    "UPDATE sessions SET is_active = 1, updated_at = ? WHERE id = ?",
+                let updatedRows = try executeAndReturnAffectedRowCount(
+                    "UPDATE sessions SET is_active = 1, updated_at = ? WHERE id = ? AND workspace_id = ?",
                     binder: { stmt in
                         sqlite3_bind_double(stmt, 1, now)
                         self.bindText(sessionID, at: 2, in: stmt)
+                        self.bindText(workspaceID, at: 3, in: stmt)
                     }
                 )
+                guard updatedRows == 1 else {
+                    throw SessionStoreError.sessionNotFoundInWorkspace(
+                        sessionID: sessionID,
+                        workspaceID: workspaceID
+                    )
+                }
 
                 try execute(
                     "UPDATE workspaces SET last_active_session_id = ?, updated_at = ? WHERE id = ?",
@@ -489,6 +506,23 @@ private extension SessionStore {
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw SessionStoreError.sqliteError(sqliteErrorMessage())
         }
+    }
+
+    func executeAndReturnAffectedRowCount(_ sql: String, binder: ((OpaquePointer?) -> Void)? = nil) throws -> Int {
+        guard let db else { throw SessionStoreError.databaseUnavailable }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw SessionStoreError.sqliteError(sqliteErrorMessage())
+        }
+        defer { sqlite3_finalize(statement) }
+
+        binder?(statement)
+
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw SessionStoreError.sqliteError(sqliteErrorMessage())
+        }
+
+        return Int(sqlite3_changes(db))
     }
 
     func bindText(_ value: String?, at index: Int32, in statement: OpaquePointer?) {

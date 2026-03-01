@@ -22,17 +22,6 @@ enum VoiceAgentModel: String, CaseIterable, Identifiable {
     }
 }
 
-enum VADEagerness: String, CaseIterable, Identifiable {
-    case low, medium, high, auto
-    var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .auto: return "Auto"
-        default: return rawValue.capitalized
-        }
-    }
-}
-
 struct SettingsView: View {
     @EnvironmentObject private var configManager: AppConfigManager
     @EnvironmentObject private var audioManager: AudioManager
@@ -43,7 +32,6 @@ struct SettingsView: View {
 
     @AppStorage("voiceAgentVoice") private var selectedVoice: VoiceAgentVoice = .marin
     @AppStorage("voiceAgentModel") private var selectedModel: VoiceAgentModel = .realtime
-    @AppStorage("vadEagerness") private var vadEagerness: VADEagerness = .low
     @AppStorage("safeModeEnabled") private var safeModeEnabled = false
     @AppStorage("autoAbortOnBargeIn") private var autoAbortOnBargeIn = true
 
@@ -94,12 +82,6 @@ struct SettingsView: View {
                     }
                 }
 
-                Picker("VAD Eagerness", selection: $vadEagerness) {
-                    ForEach(VADEagerness.allCases) { level in
-                        Text(level.displayName).tag(level)
-                    }
-                }
-
                 Toggle("Safe mode", isOn: $safeModeEnabled)
                 Text("Disable write/edit tools and restrict shell commands to a safe allowlist.")
                     .font(.caption)
@@ -107,10 +89,6 @@ struct SettingsView: View {
 
                 Toggle("Auto-abort on barge-in", isOn: $autoAbortOnBargeIn)
                 Text("When enabled, interrupting speech truncates the current assistant response.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text("Controls how eagerly the model detects you've finished speaking. Low is recommended to reduce false interruptions.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

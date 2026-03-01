@@ -28,6 +28,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   const text = styles.text;
   let state: StreamState = "idle";
   const tracker = new ToolTracker();
+  const toolStartTimes = new Map<string, number>();
   const streamedTools = new Set<string>();
   let lastStatusMessage: string | null = null;
   let statusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -92,6 +93,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
 
       case "tool_execution_start":
         ensureIdle();
+        toolStartTimes.set(event.toolCallId, Date.now());
         write(
           tag.tool(formatTag("tool")) +
             " " +
@@ -186,6 +188,15 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
             text.error(
               `Extension ${event.extensionPath} (${event.event}): ${event.error}`
             ) +
+            "\n"
+        );
+        break;
+
+      case "prompt_error":
+        write(
+          tag.error(formatTag("error")) +
+            " " +
+            text.error(`Prompt failed: ${event.error}`) +
             "\n"
         );
         break;
@@ -298,11 +309,17 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     tracker.complete(event.toolCallId);
     const hadStreaming = streamedTools.delete(event.toolCallId);
 
+    const startTime = toolStartTimes.get(event.toolCallId);
+    toolStartTimes.delete(event.toolCallId);
+    const durationMs = startTime !== undefined ? Date.now() - startTime : null;
+    const durationStr = durationMs !== null ? `[${durationMs}ms]` : null;
+
     if (event.isError) {
       write(
         tag.error(formatTag("error")) +
           " " +
           text.error(`${event.toolName} failed`) +
+          (durationStr ? ` ${text.dim(durationStr)}` : "") +
           "\n"
       );
       const errorText = extractToolText(event.result);
@@ -324,6 +341,9 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       }
     }
 
+    if (durationStr && !event.isError) {
+      write(`  ${text.dim(durationStr)}\n`);
+    }
     write("\n");
   }
 
@@ -404,13 +424,10 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
           write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
           break;
         }
-        const state = event.metadata?.state ?? "activity";
         if (!options.verbose) {
-          if (state === "speech_stopped") {
-            write(`${tag.you(USER_LABEL)} ${text.you("[voice message]")}\n`);
-          }
           break;
         }
+        const state = event.metadata?.state ?? "activity";
         write(`${tag.you(formatTag("voice"))} ${text.you(state)}\n`);
         break;
       }
@@ -461,6 +478,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       flushPendingStatus();
       ensureIdle();
       tracker.reset();
+      toolStartTimes.clear();
       streamedTools.clear();
       lastStatusMessage = null;
     },

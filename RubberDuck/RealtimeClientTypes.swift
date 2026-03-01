@@ -141,6 +141,12 @@ struct RealtimeResponseDone: Decodable {
     }
 }
 
+struct RealtimeFunctionCallItem {
+    let callId: String
+    let name: String
+    let arguments: String
+}
+
 // MARK: - Delegate Protocol
 
 @MainActor
@@ -174,6 +180,8 @@ protocol RealtimeClientDelegate: AnyObject {
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveInputAudioTranscriptionDone text: String, itemId: String?)
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemCreated item: [String: Any])
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemDone item: [String: Any])
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallItem call: RealtimeFunctionCallItem)
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveRateLimitsUpdated rateLimits: [[String: Any]])
 }
 
@@ -204,5 +212,7 @@ extension RealtimeClientDelegate {
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallArgumentsDone arguments: String, callId: String) {}
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveInputAudioTranscriptionDone text: String, itemId: String?) {}
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemCreated item: [String: Any]) {}
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemDone item: [String: Any]) {}
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallItem call: RealtimeFunctionCallItem) {}
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveRateLimitsUpdated rateLimits: [[String: Any]]) {}
 }

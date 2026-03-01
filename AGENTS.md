@@ -47,14 +47,17 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - The app runs as a menu bar agent (`LSUIElement = true`) — no dock icon or main window. Do not add a `WindowGroup` or `DocumentGroup` scene
 - If UI changes do not appear, you are likely running a stale bundle. Always replace `/Applications/RubberDuck.app` from `/tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app` and relaunch from `/Applications`.
 - Settings window opening is centralized in `SettingsWindowController.shared.show()`; do not use responder-chain selectors like `showSettingsWindow:` for new code paths
-- Setup checklist state is stored in `TranscriptionManager` (`setupGuideDismissed`) and surfaced in menu + Settings > Setup; keep skip/reset behavior non-blocking
+- Setup checklist state is stored in `AppConfigManager` (`setupGuideDismissed`) and surfaced in menu + Settings > Setup; keep skip/reset behavior non-blocking
 - HotkeyManager is `@MainActor` — removing this will cause KeyboardShortcuts crashes on background threads
-- Settings changes propagate via `@EnvironmentObject` (`TranscriptionManager`) — do not replace with NotificationCenter
+- Settings changes propagate via `@EnvironmentObject` (`AppConfigManager`) — do not replace with NotificationCenter
 - Default global hotkeys are Option+D (activate voice agent) and Option+Shift+D (open Settings) — configured via KeyboardShortcuts in `HotkeyManager`
-- CLI uses a local daemon + Unix socket. Default socket path is `~/Library/Application Support/RubberDuck/duck.sock`; if path length is too long, it falls back to `$TMPDIR/rubber-duck-<hash>.sock`.
+- CLI uses a local daemon + Unix socket. Default socket path is `~/Library/Application Support/RubberDuck/daemon.sock`; if path length is too long, it falls back to `$TMPDIR/rubber-duck-<hash>.sock`.
 - CLI daemon runtime files: `~/Library/Application Support/RubberDuck/{metadata.json,config.json,duck-daemon.log,duck-daemon.pid,pi-sessions/}`.
 - CLI `follow` and `say` automatically handle Pi `extension_ui_request` events via `@clack/prompts` and send `extension_ui_response` back through the daemon.
-- CLI daemon auto-detects a fast Pi model from your API key: `ANTHROPIC_API_KEY` → `haiku`, `OPENAI_API_KEY` → `gpt-4o-mini`, `GOOGLE_API_KEY` → `gemini-2.0-flash`. Override with `RUBBER_DUCK_PI_MODEL` env var (e.g. `RUBBER_DUCK_PI_MODEL=sonnet`) or `piModel` in `config.json`. Thinking defaults to `off` for speed; override with `RUBBER_DUCK_PI_THINKING`.
+- CLI daemon defaults to `gpt-4o-mini` when `OPENAI_API_KEY` is set. Override with `RUBBER_DUCK_PI_MODEL` env var. Thinking defaults to `off` for speed; override with `RUBBER_DUCK_PI_THINKING`.
+- Swift app connects to `daemon.sock` via `DaemonSocketClient` (Network.framework NWConnection, `@MainActor`). If daemon absent the app runs normally — voice tools return an error, workspace switching falls back to 2s polling.
+- Voice tool calls (`read_file`, `write_file`, `edit_file`, `bash`, `grep_search`, `find_files`) are executed by `cli/src/daemon/voice-tools.ts` via the `voice_tool_call` daemon method. Swift no longer implements these tools locally.
+- Workspace switching from `duck [path]` → Swift menu bar is instant via `voice_session_changed` daemon push (no polling delay when daemon is running).
 
 ## Conventions
 

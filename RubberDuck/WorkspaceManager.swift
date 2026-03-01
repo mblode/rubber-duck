@@ -26,7 +26,9 @@ final class WorkspaceManager: ObservableObject {
     private let cliMetadataPath: URL
     private let cliMetadataReader: CLIMetadataReader
     private var cliMetadataSyncTimer: Timer?
-    private var fileMonitor: DispatchSourceFileSystemObject?
+    // Suppress polling for this many seconds after a daemon push event arrives.
+    private static let daemonPushSuppressSeconds: TimeInterval = 5
+    private var lastDaemonPushTime: Date?
 
     private enum Keys {
         static let activeWorkspaceID = "activeWorkspaceID"
@@ -43,12 +45,11 @@ final class WorkspaceManager: ObservableObject {
         self.cliMetadataPath = AppSupportPaths.metadataFileURL(fileManager: fileManager)
         self.cliMetadataReader = CLIMetadataReader(metadataURL: cliMetadataPath)
         restoreState()
-        startCLIMetadataFileMonitor()
+        startCLIMetadataSyncPolling()
     }
 
     deinit {
         cliMetadataSyncTimer?.invalidate()
-        fileMonitor?.cancel()
     }
 
     // MARK: - Public API
@@ -160,34 +161,48 @@ final class WorkspaceManager: ObservableObject {
         }
     }
 
-    private func startCLIMetadataFileMonitor() {
-        let path = cliMetadataPath.path
-        let fd = open(path, O_EVTONLY)
-        guard fd >= 0 else {
-            // File doesn't exist yet, fall back to polling
-            startCLIMetadataSyncPolling()
-            return
-        }
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd,
-            eventMask: [.write, .rename],
-            queue: .main
-        )
-        source.setEventHandler { [weak self] in
-            self?.syncStateFromCLIMetadataIfNeeded()
-        }
-        source.setCancelHandler { close(fd) }
-        source.resume()
-        fileMonitor = source
-    }
-
     private func startCLIMetadataSyncPolling() {
         cliMetadataSyncTimer?.invalidate()
         cliMetadataSyncTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
+                // Suppress polling for a short window after a daemon push so we don't
+                // immediately overwrite the push with a stale metadata.json read.
+                if let lastPush = self?.lastDaemonPushTime,
+                   Date().timeIntervalSince(lastPush) < Self.daemonPushSuppressSeconds {
+                    return
+                }
                 self?.syncStateFromCLIMetadataIfNeeded()
             }
         }
+    }
+
+    /// Called by AppComposer when the daemon socket disconnects.
+    /// Clears the push-suppression window so polling resumes immediately.
+    func clearDaemonPushSuppression() {
+        lastDaemonPushTime = nil
+    }
+
+    /// Called by AppComposer when the daemon pushes a `voice_session_changed` event.
+    /// Immediately attaches the workspace — no need to wait for the next polling tick.
+    func handleDaemonWorkspaceChanged(path: String, sessionId: String?, sessionName: String?) {
+        lastDaemonPushTime = Date()
+        let url = URL(fileURLWithPath: path)
+        let preferredSession: CLIMetadataFile.Session?
+        if let sessionId {
+            preferredSession = CLIMetadataFile.Session(
+                id: sessionId,
+                workspaceId: "",
+                name: sessionName,
+                lastActiveAt: nil,
+                createdAt: nil,
+                isVoiceActive: true,
+                piSessionFile: nil
+            )
+        } else {
+            preferredSession = nil
+        }
+        attachWorkspace(path: url, preferredSession: preferredSession)
+        logInfo("WorkspaceManager: Workspace updated via daemon push: \(path)")
     }
 
     private func syncStateFromCLIMetadataIfNeeded() {

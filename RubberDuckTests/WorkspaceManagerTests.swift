@@ -47,6 +47,13 @@ final class WorkspaceManagerTests: XCTestCase {
 
         func createSession(workspaceID: String, name: String, sessionID: String, historyFile: String?) throws -> SessionRecord {
             if let existing = sessionsByID[sessionID] {
+                guard existing.workspaceID == workspaceID else {
+                    throw SessionStoreError.sessionWorkspaceMismatch(
+                        sessionID: sessionID,
+                        workspaceID: workspaceID,
+                        existingWorkspaceID: existing.workspaceID
+                    )
+                }
                 return existing
             }
             let record = SessionRecord(
@@ -77,6 +84,12 @@ final class WorkspaceManagerTests: XCTestCase {
         }
 
         func setActiveSession(sessionID: String, workspaceID: String) throws {
+            guard let target = sessionsByID[sessionID], target.workspaceID == workspaceID else {
+                throw SessionStoreError.sessionNotFoundInWorkspace(
+                    sessionID: sessionID,
+                    workspaceID: workspaceID
+                )
+            }
             for (id, session) in sessionsByID where session.workspaceID == workspaceID {
                 sessionsByID[id] = SessionRecord(
                     id: session.id,
@@ -141,6 +154,12 @@ final class WorkspaceManagerTests: XCTestCase {
     private func makeManager(store: MockSessionRepository) -> WorkspaceManager {
         let defaults = UserDefaults(suiteName: "WorkspaceManagerTests-\(UUID().uuidString)")!
         return WorkspaceManager(store: store, userDefaults: defaults, fileManager: .default)
+    }
+
+    private func makeSessionStore() -> SessionStore {
+        let root = tempDirectory
+            .appendingPathComponent("app-support-\(UUID().uuidString)", isDirectory: true)
+        return SessionStore(fileManager: .default, appSupportRootURL: root)
     }
 
     // MARK: - Tests
@@ -250,5 +269,48 @@ final class WorkspaceManagerTests: XCTestCase {
 
         manager.switchWorkspace(id: ws1ID!)
         XCTAssertEqual(manager.activeWorkspace?.id, ws1ID)
+    }
+
+    func test_sessionStore_createSession_rejectsIDCollisionAcrossWorkspaces() throws {
+        let store = makeSessionStore()
+        let workspaceAPath = makeWorkspacePath(name: "session-store-a")
+        let workspaceBPath = makeWorkspacePath(name: "session-store-b")
+
+        let workspaceA = try store.upsertWorkspace(path: workspaceAPath.path)
+        let workspaceB = try store.upsertWorkspace(path: workspaceBPath.path)
+
+        let fixedSessionID = "shared-session-id"
+        _ = try store.createSession(workspaceID: workspaceA.id, name: "duck-1", sessionID: fixedSessionID)
+
+        XCTAssertThrowsError(
+            try store.createSession(workspaceID: workspaceB.id, name: "duck-2", sessionID: fixedSessionID)
+        ) { error in
+            guard case let SessionStoreError.sessionWorkspaceMismatch(sessionID, workspaceID, existingWorkspaceID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(sessionID, fixedSessionID)
+            XCTAssertEqual(workspaceID, workspaceB.id)
+            XCTAssertEqual(existingWorkspaceID, workspaceA.id)
+        }
+    }
+
+    func test_sessionStore_setActiveSession_rejectsSessionOutsideWorkspace() throws {
+        let store = makeSessionStore()
+        let workspaceAPath = makeWorkspacePath(name: "session-store-c")
+        let workspaceBPath = makeWorkspacePath(name: "session-store-d")
+
+        let workspaceA = try store.upsertWorkspace(path: workspaceAPath.path)
+        let workspaceB = try store.upsertWorkspace(path: workspaceBPath.path)
+        let sessionInB = try store.createSession(workspaceID: workspaceB.id, name: "duck-b")
+
+        XCTAssertThrowsError(
+            try store.setActiveSession(sessionID: sessionInB.id, workspaceID: workspaceA.id)
+        ) { error in
+            guard case let SessionStoreError.sessionNotFoundInWorkspace(sessionID, workspaceID) = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            XCTAssertEqual(sessionID, sessionInB.id)
+            XCTAssertEqual(workspaceID, workspaceA.id)
+        }
     }
 }

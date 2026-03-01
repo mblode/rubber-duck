@@ -115,6 +115,11 @@ export interface ExtensionErrorEvent {
   type: "extension_error";
 }
 
+export interface PromptErrorEvent {
+  error: string;
+  type: "prompt_error";
+}
+
 export interface ExtensionUiRequestEvent {
   id: string;
   message?: string;
@@ -160,6 +165,7 @@ export type PiEvent =
   | AutoRetryStartEvent
   | AutoRetryEndEvent
   | ExtensionErrorEvent
+  | PromptErrorEvent
   | ExtensionUiRequestEvent;
 
 // ---------------------------------------------------------------------------
@@ -278,7 +284,10 @@ export type DaemonMethod =
   | "abort"
   | "doctor"
   | "get_state"
-  | "ping";
+  | "ping"
+  | "voice_connect"
+  | "voice_tool_call"
+  | "voice_state";
 
 // ---------------------------------------------------------------------------
 // Typed Daemon Request Params (per method)
@@ -327,6 +336,29 @@ export interface GetStateParams {
   sessionId?: string;
 }
 
+export interface VoiceConnectParams {
+  clientVersion: string;
+  workspacePath?: string;
+}
+
+export interface VoiceToolCallParams {
+  arguments: string;
+  callId: string;
+  toolName: string;
+  workspacePath: string;
+}
+
+export interface VoiceStateParams {
+  sessionId?: string;
+  state:
+    | "idle"
+    | "connecting"
+    | "listening"
+    | "thinking"
+    | "speaking"
+    | "toolRunning";
+}
+
 export interface DaemonRequestMap {
   abort: AbortParams;
   attach: AttachParams;
@@ -338,6 +370,9 @@ export interface DaemonRequestMap {
   say: SayParams;
   sessions: SessionsParams;
   unfollow: UnfollowParams;
+  voice_connect: VoiceConnectParams;
+  voice_state: VoiceStateParams;
+  voice_tool_call: VoiceToolCallParams;
 }
 
 export type DaemonRequest = {
@@ -359,6 +394,13 @@ export interface DaemonEvent {
   data: PiEvent | Record<string, unknown>;
   event: string;
   sessionId: string;
+}
+
+export interface VoiceSessionChangedEvent {
+  sessionId: string;
+  sessionName: string;
+  type: "voice_session_changed";
+  workspacePath: string;
 }
 
 export type DaemonMessage = DaemonResponse | DaemonEvent;

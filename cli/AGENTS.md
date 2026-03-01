@@ -58,10 +58,10 @@ src/
     request-handler.ts      # Route daemon requests to business logic
     event-bus.ts            # Pub/sub: subscribe(clientId, sessionId, handler)
     health.ts               # 30s periodic Pi process liveness check
+    voice-tools.ts          # voice_tool_call handler: 6 tools executed in Node.js for Swift voice app
   renderer/
     index.ts                # Factory: createRenderer(options) → text or JSON
-    types.ts                # EventRenderer interface, RendererPiEvent union
-    colors.ts               # styleText wrappers respecting NO_COLOR
+colors.ts               # styleText wrappers respecting NO_COLOR
     format.ts               # formatTag, formatToolArgs, truncate
     tool-tracker.ts         # Diff accumulated tool output, emit only new lines
     text-renderer.ts        # Pretty-print with [prefix] tags, streaming deltas
@@ -72,16 +72,18 @@ src/
 ## Data Flow
 
 ```
-RubberDuck.app (voice) ──► duck CLI ──► daemon (Unix socket) ──► Pi (RPC subprocess)
-                                              │
-                                              ├── MetadataStore (metadata.json)
-                                              ├── EventBus (pub/sub per session)
-                                              └── SocketServer (NDJSON per client)
+RubberDuck.app (voice) ◄──► daemon (Unix socket) ──► Pi (RPC subprocess)
+       │ voice_connect              │
+       │ voice_tool_call            ├── MetadataStore (metadata.json)
+       │ voice_state                ├── EventBus (pub/sub per session)
+       │ voice_session_changed ◄──  └── SocketServer (NDJSON per client)
+       │
+duck CLI ──────────────► daemon ──► Pi
 ```
 
 ## Daemon IPC Protocol
 
-NDJSON over Unix socket at `~/Library/Application Support/RubberDuck/duck.sock`.
+NDJSON over Unix socket at `~/Library/Application Support/RubberDuck/daemon.sock`.
 If that path exceeds Unix socket length limits, daemon and CLI fall back to
 `$TMPDIR/rubber-duck-<hash>.sock`.
 
@@ -89,7 +91,7 @@ If that path exceeds Unix socket length limits, daemon and CLI fall back to
 - **Response**: `{ id, ok, data?, error? }`
 - **Event**: `{ event, sessionId, data }` (pushed to subscribed clients)
 
-Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`, `sessions`, `abort`, `doctor`, `get_state`
+Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`, `sessions`, `abort`, `doctor`, `get_state`, `voice_connect`, `voice_tool_call`, `voice_state`
 
 ## Gotchas
 
@@ -104,6 +106,6 @@ Methods: `ping`, `attach`, `follow`, `unfollow`, `extension_ui_response`, `say`,
 - **Metadata path**: `~/Library/Application Support/RubberDuck/metadata.json` — atomic writes via rename.
 - **Runtime config/log**: daemon ensures `config.json` and appends lifecycle lines to `duck-daemon.log` in app support.
 - **UI extension requests**: `follow`/`say` auto-handle `extension_ui_request` via `@clack/prompts` and forward responses with daemon method `extension_ui_response`.
-- **Pi model config**: `RUBBER_DUCK_PI_MODEL` sets `--model` passed to Pi (e.g. `haiku`, `gpt-4o-mini`, `sonnet`). Without it, the daemon auto-detects a fast model from your API key: `ANTHROPIC_API_KEY` → `haiku`, `OPENAI_API_KEY` → `gpt-4o-mini`, `GOOGLE_API_KEY` → `gemini-2.0-flash`. Override with `piModel` in `config.json`.
-- **Pi thinking level**: `RUBBER_DUCK_PI_THINKING` sets `--thinking` level (default: `off` for speed). Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. Override with `piThinking` in `config.json`.
+- **Pi model config**: `RUBBER_DUCK_PI_MODEL` sets `--model` passed to Pi (e.g. `gpt-4o-mini`, `gpt-4o`). Without it, the daemon defaults to `gpt-4o-mini` when `OPENAI_API_KEY` is set.
+- **Pi thinking level**: `RUBBER_DUCK_PI_THINKING` sets `--thinking` level (default: `off` for speed). Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.
 - **`setStatus` messages**: Internal Pi status events (e.g. `Thinking…`) are suppressed in default output. Use `--verbose` to see them.

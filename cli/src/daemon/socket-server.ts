@@ -1,5 +1,10 @@
 import { existsSync, unlinkSync } from "node:fs";
-import { createServer, type Server, type Socket } from "node:net";
+import {
+  createConnection,
+  createServer,
+  type Server,
+  type Socket,
+} from "node:net";
 import { createInterface } from "node:readline";
 import { SOCKET_PATH } from "../constants.js";
 import type { DaemonEvent, DaemonRequest, DaemonResponse } from "../types.js";
@@ -23,15 +28,41 @@ export class SocketServer {
     this.requestHandler = handler;
   }
 
-  start(): Promise<void> {
-    // Remove stale socket file
-    if (existsSync(SOCKET_PATH)) {
-      try {
-        unlinkSync(SOCKET_PATH);
-      } catch {
-        /* ignore */
-      }
+  private isSocketReachable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = createConnection({ path: SOCKET_PATH });
+      const timeout = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, 300);
+
+      socket.on("connect", () => {
+        clearTimeout(timeout);
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on("error", () => {
+        clearTimeout(timeout);
+        resolve(false);
+      });
+    });
+  }
+
+  private async prepareSocketPath(): Promise<void> {
+    if (!existsSync(SOCKET_PATH)) {
+      return;
     }
+
+    if (await this.isSocketReachable()) {
+      throw new Error(`Daemon socket already in use: ${SOCKET_PATH}`);
+    }
+
+    unlinkSync(SOCKET_PATH);
+  }
+
+  async start(): Promise<void> {
+    await this.prepareSocketPath();
 
     return new Promise<void>((resolve, reject) => {
       this.server.on("error", reject);

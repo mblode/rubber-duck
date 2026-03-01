@@ -12,9 +12,13 @@ enum AudioConstants {
     /// RMS threshold below which audio is replaced with silence to prevent
     /// ambient noise from triggering server-side VAD. ~-46 dBFS, well below speech.
     static let noiseGateThreshold: Float = 0.005
+    /// Stricter gate used when AEC is unavailable to reduce speaker bleed into capture.
+    static let noiseGateThresholdWithoutAEC: Float = 0.012
     /// How long (in seconds) to keep sending real audio after signal drops below threshold.
     /// Prevents the gate from clipping inter-word pauses.
     static let noiseGateHoldTime: TimeInterval = 0.25
+    /// Longer hold when AEC is unavailable to avoid gating real speech between words.
+    static let noiseGateHoldTimeWithoutAEC: TimeInterval = 0.35
     /// Maximum time to wait for the first captured frame after engine startup.
     static let captureStartupFrameTimeout: TimeInterval = 0.6
 }
@@ -77,7 +81,8 @@ enum AudioEngineStartupPlanner {
         if let detectedInputChannels {
             canUseVoiceProcessing = detectedInputChannels <= AudioConstants.maxVoiceProcessingInputChannels
         } else {
-            canUseVoiceProcessing = true
+            // Conservative default: unknown channel topology should not start in VP mode.
+            canUseVoiceProcessing = false
         }
         if preferVoiceProcessing {
             if canUseVoiceProcessing {
@@ -114,16 +119,23 @@ enum AudioEngineStartupPlanner {
 
 class AudioManager: NSObject, ObservableObject {
     @Published var isStreaming = false
+    @Published private(set) var isEchoCancellationActive: Bool = false
     @Published private(set) var microphonePermissionState: MicrophonePermissionState = .notDetermined
     private var audioEngine: AVAudioEngine?
     private var inputNode: AVAudioInputNode?
     private var converter: AVAudioConverter?
     private var volumeMeter: AVAudioMixerNode?
     private let audioQueue = DispatchQueue(label: "co.blode.rubber-duck.audio")
+    private let audioQueueKey = DispatchSpecificKey<Void>()
     private var streamingChunkCallback: ((String) -> Void)?
     private let isStreamingFlag = OSAllocatedUnfairLock(initialState: false)
+    private let isInputMutedFlag = OSAllocatedUnfairLock(initialState: false)
+    private let isCaptureStartupFlag = OSAllocatedUnfairLock(initialState: false)
+    private let isEchoCancellationActiveFlag = OSAllocatedUnfairLock(initialState: false)
     private let startupFrameSemaphoreLock = NSLock()
     private var startupFrameSemaphore: DispatchSemaphore?
+    private var lastSetupError: NSError?
+    private var lastSetupDiagnostics: String?
 
     // Shared playback node — lives on the same engine as capture for AEC.
     private(set) var playerNode: AVAudioPlayerNode?
@@ -137,11 +149,21 @@ class AudioManager: NSObject, ObservableObject {
 
     override init() {
         super.init()
+        audioQueue.setSpecific(key: audioQueueKey, value: ())
         refreshMicrophonePermissionState()
     }
 
     var isCaptureEngineRunning: Bool {
         isStreamingFlag.withLock { $0 } && (audioEngine?.isRunning ?? false)
+    }
+
+    var isCaptureStartupInProgress: Bool {
+        isCaptureStartupFlag.withLock { $0 }
+    }
+
+    var muteInput: Bool {
+        get { isInputMutedFlag.withLock { $0 } }
+        set { isInputMutedFlag.withLock { $0 = newValue } }
     }
 
     // MARK: - Audio Recording Setup
@@ -199,11 +221,48 @@ class AudioManager: NSObject, ObservableObject {
         }
     }
 
+    private func setLastSetupError(
+        code: Int,
+        message: String,
+        diagnostics: String? = nil
+    ) {
+        let diagnosticSuffix: String
+        if let diagnostics, !diagnostics.isEmpty {
+            diagnosticSuffix = " [\(diagnostics)]"
+        } else {
+            diagnosticSuffix = ""
+        }
+        lastSetupDiagnostics = diagnostics
+        lastSetupError = NSError(
+            domain: "co.blode.rubber-duck.audio",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: "\(message)\(diagnosticSuffix)"]
+        )
+    }
+
+    private func osStatusLabel(code: Int) -> String {
+        let unsignedCode = UInt32(bitPattern: Int32(code))
+        let bytes = [
+            UInt8((unsignedCode >> 24) & 0xFF),
+            UInt8((unsignedCode >> 16) & 0xFF),
+            UInt8((unsignedCode >> 8) & 0xFF),
+            UInt8(unsignedCode & 0xFF)
+        ]
+        let isPrintable = bytes.allSatisfy { $0 >= 32 && $0 <= 126 }
+        if isPrintable, let fourCC = String(bytes: bytes, encoding: .ascii) {
+            return "\(code) (\(fourCC))"
+        }
+        return "\(code)"
+    }
+
     private func setupAudioEngine(enableVoiceProcessing: Bool, includePlaybackNode: Bool) -> Bool {
         let graphMode = includePlaybackNode ? "shared-capture-playback" : "capture-only"
         logInfo(
             "AudioManager: Setting up audio engine (mode=\(enableVoiceProcessing ? "voice-processing" : "standard"), graph=\(graphMode))"
         )
+
+        lastSetupError = nil
+        lastSetupDiagnostics = nil
 
         // Clean up existing engine if any
         cleanupAudioEngine()
@@ -211,17 +270,34 @@ class AudioManager: NSObject, ObservableObject {
         audioEngine = AVAudioEngine()
         guard let audioEngine = audioEngine else {
             logError("AudioManager: Failed to create audio engine")
+            setLastSetupError(code: -1001, message: "Failed to create audio engine", diagnostics: "graph=\(graphMode)")
             return false
         }
 
         inputNode = audioEngine.inputNode
         guard let inputNode = inputNode else {
             logError("AudioManager: Failed to get input node")
+            setLastSetupError(code: -1002, message: "Failed to get input node", diagnostics: "graph=\(graphMode)")
             cleanupAudioEngine()
             return false
         }
 
+        let preVoiceProcessingInputFormat = inputNode.outputFormat(forBus: 0)
+        let setupDiagnostics = "graph=\(graphMode) input=\(preVoiceProcessingInputFormat)"
+
         if enableVoiceProcessing {
+            if preVoiceProcessingInputFormat.channelCount > AudioConstants.maxVoiceProcessingInputChannels {
+                logInfo(
+                    "AudioManager: Skipping Voice Processing setup (input channels=\(preVoiceProcessingInputFormat.channelCount), max=\(AudioConstants.maxVoiceProcessingInputChannels))"
+                )
+                setLastSetupError(
+                    code: -10875,
+                    message: "Voice Processing disabled for multi-channel input",
+                    diagnostics: setupDiagnostics
+                )
+                cleanupAudioEngine()
+                return false
+            }
             // Enable Voice Processing IO for acoustic echo cancellation + noise suppression.
             // Both capture and playback must share the same engine for AEC to have a
             // reference signal from the output path.
@@ -230,6 +306,12 @@ class AudioManager: NSObject, ObservableObject {
                 logInfo("AudioManager: Voice Processing IO enabled (AEC + noise suppression active)")
             } catch {
                 logError("AudioManager: Failed to enable Voice Processing IO: \(error.localizedDescription)")
+                let errorCode = (error as NSError).code
+                setLastSetupError(
+                    code: errorCode,
+                    message: "Failed to enable Voice Processing IO",
+                    diagnostics: "\(setupDiagnostics) status=\(osStatusLabel(code: errorCode))"
+                )
                 cleanupAudioEngine()
                 return false
             }
@@ -239,6 +321,7 @@ class AudioManager: NSObject, ObservableObject {
         volumeMeter = AVAudioMixerNode()
         guard let volumeMeter = volumeMeter else {
             logError("AudioManager: Failed to create volume meter")
+            setLastSetupError(code: -1003, message: "Failed to create volume meter", diagnostics: setupDiagnostics)
             cleanupAudioEngine()
             return false
         }
@@ -248,27 +331,37 @@ class AudioManager: NSObject, ObservableObject {
         let inputFormat = inputNode.outputFormat(forBus: 0)
         guard inputFormat.channelCount > 0, inputFormat.sampleRate > 0 else {
             logError("AudioManager: Invalid input format: \(inputFormat)")
+            setLastSetupError(code: -10868, message: "Invalid input format", diagnostics: setupDiagnostics)
             cleanupAudioEngine()
             return false
         }
-        if enableVoiceProcessing && inputFormat.channelCount > AudioConstants.maxVoiceProcessingInputChannels {
-            logInfo(
-                "AudioManager: Voice Processing input format has unsupported channel count (\(inputFormat.channelCount)); skipping this mode"
-            )
-            cleanupAudioEngine()
-            return false
-        }
-
         let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                                         sampleRate: AudioConstants.sampleRate,
                                         channels: AudioConstants.channels,
                                         interleaved: false)!
 
+        // When VoiceProcessingIO is active on a multi-channel device, downmix to mono so
+        // the audio graph is valid. VoiceProcessingIO AEC still operates on the hardware-level
+        // reference signal regardless of the downstream capture format.
+        let captureFormat: AVAudioFormat
+        if enableVoiceProcessing && inputFormat.channelCount > AudioConstants.maxVoiceProcessingInputChannels {
+            captureFormat = AVAudioFormat(
+                standardFormatWithSampleRate: inputFormat.sampleRate,
+                channels: 1
+            ) ?? whisperFormat
+            logInfo(
+                "AudioManager: Voice Processing input has \(inputFormat.channelCount) channels; using mono capture format for AEC compatibility"
+            )
+        } else {
+            captureFormat = inputFormat
+        }
+
         logDebug("AudioManager: Input format: \(inputFormat)")
+        logDebug("AudioManager: Capture format: \(captureFormat)")
         logDebug("AudioManager: Whisper format: \(whisperFormat)")
 
         volumeMeter.volume = 1.0
-        audioEngine.connect(inputNode, to: volumeMeter, format: inputFormat)
+        audioEngine.connect(inputNode, to: volumeMeter, format: captureFormat)
 
         if includePlaybackNode {
             // Set up playback path on the SAME engine: playerNode → mainMixerNode → outputNode.
@@ -283,21 +376,39 @@ class AudioManager: NSObject, ObservableObject {
 
         audioEngine.prepare()
 
-        volumeMeter.installTap(onBus: 0, bufferSize: AudioConstants.captureBufferSize, format: inputFormat) { [weak self] (buffer, time) in
+        volumeMeter.installTap(onBus: 0, bufferSize: AudioConstants.captureBufferSize, format: captureFormat) { [weak self] (buffer, time) in
             self?.signalStartupCaptureFrameIfNeeded()
             self?.audioQueue.async { [weak self] in
                 guard let self = self, self.isStreamingFlag.withLock({ $0 }) else { return }
 
-                let convertedBuffer = self.convertToTargetFormat(buffer: buffer, inputFormat: inputFormat, targetFormat: whisperFormat)
+                let convertedBuffer = self.convertToTargetFormat(buffer: buffer, inputFormat: captureFormat, targetFormat: whisperFormat)
                 guard let finalBuffer = convertedBuffer else { return }
+
+                // Software mute: zero-fill during model playback to prevent echo on
+                // devices where VoiceProcessingIO is unavailable.
+                if self.isInputMutedFlag.withLock({ $0 }) {
+                    self.zeroFill(finalBuffer)
+                    guard let base64String = self.pcmBufferToBase64(finalBuffer) else { return }
+                    let callback = self.streamingChunkCallback
+                    callback?(base64String)
+                    return
+                }
 
                 // Noise gate: replace quiet audio with silence instead of dropping,
                 // since the OpenAI Realtime API expects continuous audio input.
                 let now = Date()
                 let rms = self.rmsLevel(of: finalBuffer)
-                if rms >= AudioConstants.noiseGateThreshold {
+                let isEchoCancellationActive = self.isEchoCancellationActiveFlag.withLock { $0 }
+                let activeNoiseGateThreshold = isEchoCancellationActive
+                    ? AudioConstants.noiseGateThreshold
+                    : AudioConstants.noiseGateThresholdWithoutAEC
+                let activeNoiseGateHoldTime = isEchoCancellationActive
+                    ? AudioConstants.noiseGateHoldTime
+                    : AudioConstants.noiseGateHoldTimeWithoutAEC
+
+                if rms >= activeNoiseGateThreshold {
                     self.lastAboveThresholdTime = now
-                } else if now.timeIntervalSince(self.lastAboveThresholdTime) >= AudioConstants.noiseGateHoldTime {
+                } else if now.timeIntervalSince(self.lastAboveThresholdTime) >= activeNoiseGateHoldTime {
                     self.zeroFill(finalBuffer)
                 }
 
@@ -437,6 +548,8 @@ class AudioManager: NSObject, ObservableObject {
 
             self.audioQueue.async { [weak self] in
                 guard let self = self else { return }
+                self.isCaptureStartupFlag.withLock { $0 = true }
+                defer { self.isCaptureStartupFlag.withLock { $0 = false } }
 
                 let detectedChannels = self.detectedInputChannelCount()
                 if let detectedChannels, detectedChannels > AudioConstants.maxVoiceProcessingInputChannels {
@@ -462,7 +575,29 @@ class AudioManager: NSObject, ObservableObject {
                             enableVoiceProcessing: step.mode.enablesVoiceProcessing,
                             includePlaybackNode: includePlaybackNode
                         ), let audioEngine = self.audioEngine else {
-                            return false
+                            let setupError = self.lastSetupError ?? NSError(
+                                domain: "co.blode.rubber-duck.audio",
+                                code: -1,
+                                userInfo: [NSLocalizedDescriptionKey: "Audio engine setup failed"]
+                            )
+                            lastError = setupError
+                            let errorCode = setupError.code
+                            let diagnostics = self.lastSetupDiagnostics.map { " diagnostics=\($0)" } ?? ""
+                            logError(
+                                "AudioManager: Engine setup failed (mode=\(step.mode.rawValue), graph=\(graphMode), attempt=\(attempt), code=\(self.osStatusLabel(code: errorCode))\(diagnostics)): \(setupError.localizedDescription)"
+                            )
+
+                            guard AudioEngineStartupPlanner.shouldRetryEngineStart(
+                                errorCode: errorCode,
+                                attempt: attempt,
+                                maxAttempts: step.maxStartAttempts
+                            ) else {
+                                break
+                            }
+
+                            let delayNs = AudioEngineStartupPlanner.retryDelayNanoseconds(afterFailedAttempt: attempt)
+                            Thread.sleep(forTimeInterval: Double(delayNs) / 1_000_000_000)
+                            continue
                         }
 
                         let firstFrameSemaphore = DispatchSemaphore(value: 0)
@@ -486,8 +621,11 @@ class AudioManager: NSObject, ObservableObject {
                                 )
                             }
 
+                            let aecActive = step.mode == .voiceProcessing
+                            self.isEchoCancellationActiveFlag.withLock { $0 = aecActive }
                             DispatchQueue.main.async {
                                 self.isStreaming = true
+                                self.isEchoCancellationActive = aecActive
                             }
 
                             logInfo(
@@ -499,8 +637,9 @@ class AudioManager: NSObject, ObservableObject {
                             self.clearStartupCaptureFrameSemaphore()
                             lastError = error
                             let errorCode = (error as NSError).code
+                            let diagnostics = self.lastSetupDiagnostics.map { " diagnostics=\($0)" } ?? ""
                             logError(
-                                "AudioManager: Engine start failed (mode=\(step.mode.rawValue), graph=\(graphMode), attempt=\(attempt), code=\(errorCode)): \(error.localizedDescription)"
+                                "AudioManager: Engine start failed (mode=\(step.mode.rawValue), graph=\(graphMode), attempt=\(attempt), code=\(self.osStatusLabel(code: errorCode))\(diagnostics)): \(error.localizedDescription)"
                             )
                             audioEngine.stop()
                             self.cleanupAudioEngine()
@@ -578,12 +717,20 @@ class AudioManager: NSObject, ObservableObject {
     func stopStreaming() {
         logInfo("AudioManager: Stopping streaming")
         isStreaming = false
+        isEchoCancellationActive = false
+        isEchoCancellationActiveFlag.withLock { $0 = false }
 
-        audioQueue.sync { [weak self] in
+        let teardown = { [weak self] in
             self?.isStreamingFlag.withLock { $0 = false }
+            self?.isCaptureStartupFlag.withLock { $0 = false }
             self?.audioEngine?.stop()
             self?.volumeMeter?.removeTap(onBus: 0)
             self?.cleanupAudioEngine()
+        }
+        if DispatchQueue.getSpecific(key: audioQueueKey) != nil {
+            teardown()
+        } else {
+            audioQueue.async(execute: teardown)
         }
 
         streamingChunkCallback = nil

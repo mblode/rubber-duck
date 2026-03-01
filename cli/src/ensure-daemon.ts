@@ -3,12 +3,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { createConnection } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { spinner } from "@clack/prompts";
 import {
   DAEMON_PING_TIMEOUT_MS,
   DAEMON_STARTUP_TIMEOUT_MS,
   PID_PATH,
   SOCKET_PATH,
 } from "./constants.js";
+
+interface EnsureDaemonOptions {
+  quiet?: boolean;
+}
 
 function isDaemonReachable(): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
@@ -35,7 +40,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function ensureDaemon(): Promise<void> {
+export async function ensureDaemon(
+  options: EnsureDaemonOptions = {}
+): Promise<void> {
+  const quiet = options.quiet ?? false;
+
   // Quick check — is daemon already running?
   if (await isDaemonReachable()) {
     return;
@@ -57,6 +66,9 @@ export async function ensureDaemon(): Promise<void> {
   }
 
   // Spawn daemon
+  const s = quiet ? null : spinner();
+  s?.start("Starting daemon...");
+
   const currentFile = fileURLToPath(import.meta.url);
   const distDir = dirname(currentFile);
   const daemonPath = join(distDir, "daemon.js");
@@ -77,6 +89,7 @@ export async function ensureDaemon(): Promise<void> {
     elapsed += delay;
 
     if (await isDaemonReachable()) {
+      s?.stop();
       return;
     }
 
@@ -85,5 +98,6 @@ export async function ensureDaemon(): Promise<void> {
     }
   }
 
+  s?.stop("Daemon failed to start");
   throw new Error("Daemon failed to start. Run `duck doctor` for diagnostics.");
 }

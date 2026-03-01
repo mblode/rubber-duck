@@ -1,5 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { createInterface } from "node:readline";
+import { log } from "@clack/prompts";
 import type { DaemonClient } from "../client.js";
 import {
   PI_DEFAULT_THINKING,
@@ -169,7 +171,6 @@ function printSessionHeader(
     appHistorySizeBytes,
     verbose,
   } = params;
-  const duckTag = colorize(["bold", "blue"], "[duck]");
   const shortPath = workspacePath.startsWith(homedir())
     ? `~${workspacePath.slice(homedir().length)}`
     : workspacePath;
@@ -177,22 +178,21 @@ function printSessionHeader(
   const thinking =
     process.env[PI_THINKING_OVERRIDE_ENV]?.trim() ?? PI_DEFAULT_THINKING;
   const modelInfo = colorize("dim", `[${model} · thinking:${thinking}]`);
-  const statusSuffix = isRunning
-    ? ""
-    : colorize("yellow", " [idle — run `duck say …` to start]");
-  console.log(
-    `${duckTag} ${colorize("blue", sessionName)}  ${colorize("dim", shortPath)}  ${modelInfo}${statusSuffix}`
+  log.step(
+    `${colorize("bold", sessionName)}  ${colorize("dim", shortPath)}  ${modelInfo}`
   );
+  if (!isRunning) {
+    log.warn("Session is idle — run `duck say …` to start");
+  }
   if (verbose && appHistoryFile) {
     const historyStatus = appHistoryExists
       ? `ready (${appHistorySizeBytes} bytes)`
       : "not created yet";
-    const tag = colorize(["bold", "blue"], "[session]");
-    console.log(
-      `${tag} ${colorize("dim", `app_history=${JSON.stringify(appHistoryFile)} (${historyStatus})`)}`
+    log.info(
+      `app_history=${JSON.stringify(appHistoryFile)} (${historyStatus})`
     );
   }
-  console.log();
+  process.stdout.write("\n");
 }
 
 export async function startFollowStream(
@@ -258,9 +258,7 @@ export async function startFollowStream(
   if (!options.json) {
     idleHintTimer = setTimeout(() => {
       if (!hasReceivedEvents) {
-        console.log(
-          colorize("dim", "[follow] waiting for session activity...")
-        );
+        log.info("Waiting for session activity...");
       }
     }, 4000);
   }
@@ -297,7 +295,7 @@ export async function startFollowStream(
               return;
             }
             if (!options.json && (options.verbose || !appHistoryWarningShown)) {
-              console.log(colorize("dim", `[follow] ${message}`));
+              log.warn(message);
               appHistoryWarningShown = true;
             }
           },
@@ -308,9 +306,25 @@ export async function startFollowStream(
         )
       : () => undefined;
 
-  createStreamLifecycle(client, renderer, colorize, {
+  // Inline text input: when running interactively, each typed line is sent as a prompt.
+  let rl: ReturnType<typeof createInterface> | null = null;
+  if (interactive) {
+    rl = createInterface({ input: process.stdin, terminal: false });
+    rl.on("line", (line) => {
+      const message = line.trim();
+      if (!message) {
+        return;
+      }
+      client.request("say", { message, sessionId }).catch((err) => {
+        log.error(err instanceof Error ? err.message : String(err));
+      });
+    });
+  }
+
+  createStreamLifecycle(client, renderer, {
     unfollowOnCleanup: true,
     onCleanup: () => {
+      rl?.close();
       if (idleHintTimer) {
         clearTimeout(idleHintTimer);
         idleHintTimer = null;

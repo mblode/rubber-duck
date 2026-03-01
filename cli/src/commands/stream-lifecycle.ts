@@ -1,5 +1,5 @@
+import { log } from "@clack/prompts";
 import type { DaemonClient } from "../client.js";
-import type { createColorize } from "../renderer/colors.js";
 import type { EventRenderer } from "../types.js";
 
 interface StreamLifecycleOptions {
@@ -23,7 +23,6 @@ export interface StreamLifecycle {
 export function createStreamLifecycle(
   client: DaemonClient,
   renderer: EventRenderer,
-  colorize: ReturnType<typeof createColorize>,
   options: StreamLifecycleOptions = {}
 ): StreamLifecycle {
   let isCleaningUp = false;
@@ -79,7 +78,7 @@ export function createStreamLifecycle(
       }
       options.onCleanup?.();
       renderer.cleanup();
-      console.error(colorize("red", "\nDaemon disconnected."));
+      log.error("Daemon disconnected.");
       process.exit(1);
     }
   }, 1000);

@@ -26,7 +26,6 @@ final class MockRealtimeClient: RealtimeClientProtocol {
 
     var model: String = "gpt-realtime-1.5"
     var voice: String = "marin"
-    var vadEagerness: String = "medium"
     var instructions: String = ""
     var tools: [[String: Any]] = []
 
@@ -36,6 +35,14 @@ final class MockRealtimeClient: RealtimeClientProtocol {
 
     func sendAudio(base64Chunk: String) {
         sentAudioChunks.append(base64Chunk)
+    }
+
+    // MARK: - Text Input
+
+    var sentMessages: [String] = []
+
+    func sendMessage(text: String) {
+        sentMessages.append(text)
     }
 
     // MARK: - Tool Results

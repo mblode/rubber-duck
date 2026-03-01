@@ -73,6 +73,7 @@ export const METADATA_VERSION = 1;
 export const DEFAULT_SESSION_PREFIX = "duck";
 export const PI_BINARY_OVERRIDE_ENV = "RUBBER_DUCK_PI_BINARY";
 export const PI_MODEL_OVERRIDE_ENV = "RUBBER_DUCK_PI_MODEL";
+export const PI_PROVIDER_OVERRIDE_ENV = "RUBBER_DUCK_PI_PROVIDER";
 export const PI_THINKING_OVERRIDE_ENV = "RUBBER_DUCK_PI_THINKING";
 export const PI_DEFAULT_THINKING = "off";
 
@@ -103,12 +104,8 @@ export const DAEMON_STARTUP_TIMEOUT_MS = 3000;
 export const PI_COMMAND_TIMEOUT_MS = 30_000;
 export const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
-export const PROVIDER_API_KEY_VARS = [
-  "ANTHROPIC_API_KEY",
-  "OPENAI_API_KEY",
-  "GOOGLE_API_KEY",
-  "MISTRAL_API_KEY",
-] as const;
+export const DEFAULT_PI_MODEL = "gpt-4o-mini";
+export const DEFAULT_PI_PROVIDER = "openai";
 
 export const PI_TOOLS = [
   "read",
@@ -122,7 +119,7 @@ export const PI_TOOLS = [
 
 /**
  * Resolves the Pi model to use for coding sessions.
- * Priority: RUBBER_DUCK_PI_MODEL env var → API key auto-detect → null (Pi default)
+ * Priority: RUBBER_DUCK_PI_MODEL env var → gpt-4o-mini (if OPENAI_API_KEY set) → null (Pi default)
  */
 export function resolveDefaultPiModel(
   env: NodeJS.ProcessEnv = process.env
@@ -132,13 +129,34 @@ export function resolveDefaultPiModel(
     return override;
   }
   if (env.OPENAI_API_KEY) {
-    return "gpt-4o-mini";
+    return DEFAULT_PI_MODEL;
   }
-  if (env.ANTHROPIC_API_KEY) {
-    return "haiku";
+  return null;
+}
+
+/**
+ * Resolves the Pi provider to use for coding sessions.
+ * Priority: RUBBER_DUCK_PI_PROVIDER env var → openai (if OPENAI_API_KEY set) → null (Pi default)
+ *
+ * If RUBBER_DUCK_PI_MODEL includes a provider prefix (for example "openai/gpt-4o-mini"),
+ * provider selection is considered explicit and no default provider is forced.
+ */
+export function resolveDefaultPiProvider(
+  env: NodeJS.ProcessEnv = process.env
+): string | null {
+  const override = env[PI_PROVIDER_OVERRIDE_ENV]?.trim();
+  if (override) {
+    return override;
   }
-  if (env.GOOGLE_API_KEY) {
-    return "gemini-2.0-flash";
+
+  const modelOverride = env[PI_MODEL_OVERRIDE_ENV]?.trim();
+  if (modelOverride?.includes("/")) {
+    return null;
   }
+
+  if (env.OPENAI_API_KEY) {
+    return DEFAULT_PI_PROVIDER;
+  }
+
   return null;
 }

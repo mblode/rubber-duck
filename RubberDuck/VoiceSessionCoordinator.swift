@@ -17,9 +17,19 @@ enum VoiceSessionState: String {
 protocol VoiceAudioManaging: AnyObject {
     var isStreaming: Bool { get }
     var isMicrophonePermissionDenied: Bool { get }
+    var muteInput: Bool { get set }
+    var isEchoCancellationActive: Bool { get }
 
     func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)?)
     func stopStreaming()
+}
+
+extension VoiceAudioManaging {
+    var muteInput: Bool {
+        get { false }
+        set {}
+    }
+    var isEchoCancellationActive: Bool { false }
 }
 
 extension AudioManager: VoiceAudioManaging {}
@@ -54,21 +64,36 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     private let userDefaults: UserDefaults
     private let fileManager: FileManager
     private let cliMetadataReader: CLIMetadataReader
+    private let daemonClient: DaemonSocketClient?
     private var cancellables = Set<AnyCancellable>()
-    private var toolOrchestrator: ToolOrchestrator?
     private var conversationHistory: ConversationHistory?
     private var autoAbortOnBargeIn = true
     private var stickyDisconnectErrorMessage: String?
+    private var audioStreamingGeneration: UInt64 = 0
     private let bargeInConfirmationDelaySeconds: TimeInterval
     private var pendingBargeInWorkItem: DispatchWorkItem?
     private var seenConversationItemIDs = Set<String>()
+    private var didTeardownSessionResources = false
+    private var vadSuppressedUntil: Date = .distantPast
+    private var hasAcceptedSpeechStart = false
+    private var lastAssistantAudioDeltaAt: Date?
+    private var lastAssistantPlaybackEndedAt: Date?
 
     // Track the current response's audio item for truncation on barge-in
     private var currentAudioItemId: String?
     private var currentAudioContentIndex: Int?
 
+    // Software input mute: delay unmute until audio queue has drained
+    private var inputUnmuteWorkItem: DispatchWorkItem?
+    private let unmutePlaybackPollIntervalSeconds: TimeInterval = 0.08
+    private let speechStartGuardAfterAssistantAudioSecondsWithAEC: TimeInterval = 0.22
+    private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 1.0
+    private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 6.0
+    private var pendingListeningTransitionWorkItem: DispatchWorkItem?
+
     // Track pending function calls from the current response
     private var pendingFunctionCalls: [(callId: String, name: String, arguments: String)] = []
+    private var pendingFunctionCallIDs = Set<String>()
 
     init(
         audioManager: VoiceAudioManaging,
@@ -78,7 +103,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         overlay: OverlayPresenting? = nil,
         userDefaults: UserDefaults = .standard,
         bargeInConfirmationDelaySeconds: TimeInterval = 0.35,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        daemonClient: DaemonSocketClient? = nil
     ) {
         logInfo("VoiceSessionCoordinator: Initializing")
         self.audioManager = audioManager
@@ -89,6 +115,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         self.userDefaults = userDefaults
         self.bargeInConfirmationDelaySeconds = max(0, bargeInConfirmationDelaySeconds)
         self.fileManager = fileManager
+        self.daemonClient = daemonClient
         self.cliMetadataReader = CLIMetadataReader(
             metadataURL: AppSupportPaths.metadataFileURL(fileManager: fileManager)
         )
@@ -105,11 +132,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     func setWorkspace(_ path: URL) {
         workspacePath = path
-        let workspace = WorkspaceContext(rootPath: path)
-        let executor = ToolExecutor(workspace: workspace)
-        executor.safeMode = userDefaults.bool(forKey: "safeModeEnabled")
-        toolOrchestrator = ToolOrchestrator(toolExecutor: executor, resultSender: realtimeClient)
         realtimeClient.tools = ToolDefinitions.allTools()
+        realtimeClient.instructions = SystemPrompt.voiceCodingAssistant(workspace: path.path)
         logInfo("VoiceSessionCoordinator: Workspace set to \(path.path)")
     }
 
@@ -150,17 +174,51 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
 
         stickyDisconnectErrorMessage = nil
+        didTeardownSessionResources = false
         syncRuntimeSettings()
         setState(.connecting)
         overlay.show(state: .thinking)
         realtimeClient.connect(apiKey: apiKey)
+
+        // Register with daemon (best-effort, non-blocking)
+        registerWithDaemon()
+    }
+
+    private func registerWithDaemon() {
+        guard let daemonClient else { return }
+        let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let workspacePath = workspacePath?.path
+
+        Task {
+            // Reconnect if needed (daemon may have restarted since app launched)
+            if !daemonClient.isConnected {
+                await daemonClient.connect()
+            }
+            guard daemonClient.isConnected else { return }
+
+            do {
+                let _ = try await daemonClient.request(
+                    method: "voice_connect",
+                    params: [
+                        "clientVersion": appVersion,
+                        "workspacePath": workspacePath as Any
+                    ]
+                )
+                logInfo("VoiceSessionCoordinator: Registered with daemon")
+            } catch {
+                logDebug("VoiceSessionCoordinator: Daemon registration skipped: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func handleDaemonConnectionRestored() {
+        guard sessionState != .idle else { return }
+        registerWithDaemon()
     }
 
     func disconnectSession() {
-        cancelPendingBargeIn(reason: "disconnectSession")
         stickyDisconnectErrorMessage = nil
-        stopAudioStreaming()
-        playbackManager.stopPlayback()
+        teardownSessionResourcesIfNeeded(reason: "disconnectSession", invalidateGeneration: true)
         realtimeClient.disconnect()
         setState(.idle)
         overlay.dismiss()
@@ -168,6 +226,15 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     var isActive: Bool {
         sessionState != .idle
+    }
+
+    /// Injects a text message into the active voice session (e.g., from CLI text input).
+    func sendTextMessage(_ text: String) {
+        guard sessionState != .idle else {
+            logDebug("VoiceSessionCoordinator: Ignoring sendTextMessage — session is idle")
+            return
+        }
+        realtimeClient.sendMessage(text: text)
     }
 
     // MARK: - Hotkey Handling
@@ -191,7 +258,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     private func handleHotkeyUp() {
-        // With semantic VAD, turn detection is automatic.
+        // Turn detection is server-driven.
         // Hotkey-up is a no-op.
     }
 
@@ -264,15 +331,16 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                 )
             }
 
-            // Semantic VAD already cancels active responses server-side.
+            // Cancel any in-flight response and truncate emitted audio so the
+            // next turn starts from a clean response lifecycle.
             realtimeClient.truncateResponse(
                 itemId: itemId,
                 contentIndex: contentIndex,
                 audioEnd: clampedAudioEndMs,
-                sendCancel: false
+                sendCancel: true
             )
             logDebug(
-                "VoiceSessionCoordinator: Sent truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
+                "VoiceSessionCoordinator: Sent cancel+truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
             )
         } else if !autoAbortOnBargeIn {
             logInfo("VoiceSessionCoordinator: Auto-abort on barge-in disabled, skipping truncate")
@@ -292,20 +360,168 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     // MARK: - State Management
 
     private func setState(_ state: VoiceSessionState) {
+        let wasLeavingSpeaking = sessionState == .speaking && state != .speaking
+        if state == .speaking || state == .idle || state == .connecting || state == .toolRunning {
+            cancelPendingListeningTransition(reason: "state_change_\(state.rawValue)")
+        }
         sessionState = state
         logDebug("VoiceSessionCoordinator: State -> \(state.rawValue)")
+
+        if state == .idle {
+            clearSpeechTurnState()
+            vadSuppressedUntil = .distantPast
+        }
+
+        if state == .speaking {
+            cancelInputUnmute()
+            lastAssistantPlaybackEndedAt = nil
+            // Keep barge-in available when hardware AEC is active; hard-mute otherwise.
+            audioManager.muteInput = !audioManager.isEchoCancellationActive
+        } else if wasLeavingSpeaking {
+            lastAssistantPlaybackEndedAt = Date()
+            if state == .idle {
+                cancelInputUnmute()
+                audioManager.muteInput = false
+            } else {
+                // Without AEC the mic picks up speaker reverb; use a longer tail to prevent echo
+                let unmuteDelay: TimeInterval = audioManager.isEchoCancellationActive ? 0.4 : 1.8
+                let maxAdditionalDelay: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 5.0
+                let suppressionUntil = Date().addingTimeInterval(unmuteDelay + maxAdditionalDelay)
+                if suppressionUntil > vadSuppressedUntil {
+                    vadSuppressedUntil = suppressionUntil
+                }
+                scheduleInputUnmute(afterSeconds: unmuteDelay, maxAdditionalDelay: maxAdditionalDelay)
+            }
+        }
     }
 
-    private func startAudioStreaming() {
+    private func cancelInputUnmute() {
+        inputUnmuteWorkItem?.cancel()
+        inputUnmuteWorkItem = nil
+    }
+
+    private func scheduleInputUnmute(afterSeconds delay: TimeInterval, maxAdditionalDelay: TimeInterval) {
+        let clampedDelay = max(0, delay)
+        let clampedMaxAdditionalDelay = max(0, maxAdditionalDelay)
+        let deadline = Date().addingTimeInterval(clampedDelay + clampedMaxAdditionalDelay)
+        scheduleInputUnmutePoll(afterSeconds: clampedDelay, deadline: deadline)
+    }
+
+    private func scheduleInputUnmutePoll(afterSeconds delay: TimeInterval, deadline: Date) {
+        cancelInputUnmute()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.inputUnmuteWorkItem = nil
+
+            if self.playbackManager.isPlaying, Date() < deadline {
+                self.scheduleInputUnmutePoll(afterSeconds: self.unmutePlaybackPollIntervalSeconds, deadline: deadline)
+                return
+            }
+
+            self.audioManager.muteInput = false
+        }
+        inputUnmuteWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
+    private func cancelPendingListeningTransition(reason: String) {
+        guard let workItem = pendingListeningTransitionWorkItem else {
+            return
+        }
+        workItem.cancel()
+        pendingListeningTransitionWorkItem = nil
+        logDebug("VoiceSessionCoordinator: Cancelled pending listening transition (\(reason))")
+    }
+
+    private func transitionToListeningWhenPlaybackSettles(reason: String) {
+        guard sessionState != .idle else {
+            return
+        }
+
+        if !playbackManager.isPlaying {
+            setState(.listening)
+            overlay.show(state: .listening)
+            return
+        }
+
+        let maxWait: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 3.0
+        let deadline = Date().addingTimeInterval(maxWait)
+        scheduleListeningTransitionPoll(deadline: deadline, reason: reason)
+    }
+
+    private func scheduleListeningTransitionPoll(deadline: Date, reason: String) {
+        cancelPendingListeningTransition(reason: "reschedule_\(reason)")
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.pendingListeningTransitionWorkItem = nil
+
+            guard self.sessionState != .idle else { return }
+            guard self.sessionState != .toolRunning else { return }
+
+            if self.playbackManager.isPlaying {
+                if Date() < deadline {
+                    self.scheduleListeningTransitionPoll(deadline: deadline, reason: reason)
+                    return
+                }
+
+                logError(
+                    "VoiceSessionCoordinator: Playback did not settle in time (\(reason)); forcing playback stop"
+                )
+                self.playbackManager.stopPlayback()
+            }
+
+            self.setState(.listening)
+            self.overlay.show(state: .listening)
+        }
+
+        pendingListeningTransitionWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + unmutePlaybackPollIntervalSeconds, execute: workItem)
+    }
+
+    private func clearSpeechTurnState() {
+        hasAcceptedSpeechStart = false
+    }
+
+    private func invalidateAudioStreamingGeneration() {
+        audioStreamingGeneration &+= 1
+    }
+
+    private func startNextAudioStreamingGeneration() -> UInt64 {
+        invalidateAudioStreamingGeneration()
+        return audioStreamingGeneration
+    }
+
+    private func isCurrentAudioStreamingGeneration(_ generation: UInt64) -> Bool {
+        generation == audioStreamingGeneration
+    }
+
+    private func startAudioStreaming(onCaptureBecameReady: (() -> Void)? = nil) {
+        let generation = startNextAudioStreamingGeneration()
+        var captureReadyNotified = false
         audioManager.startStreaming(
             onChunk: { [weak self] base64Chunk in
                 Task { @MainActor in
-                    self?.realtimeClient.sendAudio(base64Chunk: base64Chunk)
+                    guard let self else { return }
+                    guard self.isCurrentAudioStreamingGeneration(generation) else {
+                        logDebug("VoiceSessionCoordinator: Ignoring stale audio chunk for generation \(generation)")
+                        return
+                    }
+                    if !captureReadyNotified {
+                        captureReadyNotified = true
+                        onCaptureBecameReady?()
+                    }
+                    self.realtimeClient.sendAudio(base64Chunk: base64Chunk)
                 }
             },
             onError: { [weak self] error in
                 Task { @MainActor in
-                    self?.handleAudioStartupFailure(error)
+                    guard let self else { return }
+                    guard self.isCurrentAudioStreamingGeneration(generation) else {
+                        logDebug("VoiceSessionCoordinator: Ignoring stale audio startup error for generation \(generation)")
+                        return
+                    }
+                    self.handleAudioStartupFailure(error)
                 }
             }
         )
@@ -315,8 +531,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         let message = "Microphone error: \(error.localizedDescription)"
         logError("VoiceSessionCoordinator: \(message)")
         stickyDisconnectErrorMessage = message
-        stopAudioStreaming()
-        playbackManager.stopPlayback()
+        teardownSessionResourcesIfNeeded(reason: "audio_startup_failure", invalidateGeneration: true)
 
         if realtimeClient.connectionState == .disconnected {
             overlay.show(state: .error(message))
@@ -328,9 +543,22 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     private func stopAudioStreaming() {
-        if audioManager.isStreaming {
-            audioManager.stopStreaming()
+        audioManager.stopStreaming()
+    }
+
+    private func teardownSessionResourcesIfNeeded(reason: String, invalidateGeneration: Bool) {
+        if didTeardownSessionResources {
+            return
         }
+        didTeardownSessionResources = true
+        cancelPendingBargeIn(reason: "teardown_\(reason)")
+        cancelPendingListeningTransition(reason: "teardown_\(reason)")
+        cancelInputUnmute()
+        if invalidateGeneration {
+            invalidateAudioStreamingGeneration()
+        }
+        stopAudioStreaming()
+        playbackManager.stopPlayback()
     }
 
     // MARK: - Settings
@@ -339,9 +567,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         let settings = RuntimeSettingsLoader.load(from: userDefaults)
         realtimeClient.voice = settings.voice
         realtimeClient.model = settings.model
-        realtimeClient.vadEagerness = settings.vadEagerness
         autoAbortOnBargeIn = settings.autoAbortOnBargeIn
-        toolOrchestrator?.setSafeMode(settings.safeModeEnabled)
     }
 
     // MARK: - Workspace Attachment
@@ -504,17 +730,17 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     func realtimeClientDidBecomeReady(_ client: any RealtimeClientProtocol) {
         stickyDisconnectErrorMessage = nil
+        didTeardownSessionResources = false
         logInfo("VoiceSessionCoordinator: Connected to Realtime API")
         setState(.listening)
         overlay.show(state: .listening)
-        startAudioStreaming()
-        playbackManager.startPlayback()
+        startAudioStreaming(onCaptureBecameReady: { [weak self] in
+            self?.playbackManager.startPlayback()
+        })
     }
 
     func realtimeClientDidDisconnect(_ client: any RealtimeClientProtocol, error: Error?) {
-        cancelPendingBargeIn(reason: "transport_disconnect")
-        stopAudioStreaming()
-        playbackManager.stopPlayback()
+        teardownSessionResourcesIfNeeded(reason: "transport_disconnect", invalidateGeneration: true)
 
         if let stickyError = stickyDisconnectErrorMessage {
             logError("VoiceSessionCoordinator: Disconnected with preserved API error: \(stickyError)")
@@ -539,6 +765,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             currentAudioItemId = nil
             currentAudioContentIndex = nil
             pendingFunctionCalls = []
+            pendingFunctionCallIDs.removeAll()
             setState(.idle)
         default:
             break
@@ -548,8 +775,53 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     // MARK: - RealtimeClientDelegate: Speech Detection
 
     func realtimeClientDidDetectSpeechStarted(_ client: any RealtimeClientProtocol) {
+        let now = Date()
+
+        if audioManager.muteInput {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started while input is muted")
+            return
+        }
+
+        if now < vadSuppressedUntil {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started during suppression window")
+            return
+        }
+
+        if playbackManager.isPlaying, sessionState != .speaking {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started while playback is active outside speaking state")
+            return
+        }
+
+        if sessionState == .speaking, !audioManager.isEchoCancellationActive {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started during playback without AEC")
+            return
+        }
+
+        if !audioManager.isEchoCancellationActive,
+           let lastAssistantAudioDeltaAt,
+           now.timeIntervalSince(lastAssistantAudioDeltaAt) < speechStartGuardAfterAssistantAudioSecondsWithoutAEC {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started during no-AEC assistant-audio guard window")
+            return
+        }
+
+        if !audioManager.isEchoCancellationActive,
+           let lastAssistantPlaybackEndedAt,
+           now.timeIntervalSince(lastAssistantPlaybackEndedAt) < postPlaybackSpeechSuppressionWithoutAECSeconds {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started during no-AEC post-playback suppression")
+            return
+        }
+
+        if sessionState == .speaking,
+           audioManager.isEchoCancellationActive,
+           let lastAssistantAudioDeltaAt,
+           now.timeIntervalSince(lastAssistantAudioDeltaAt) < speechStartGuardAfterAssistantAudioSecondsWithAEC {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_started during assistant-audio guard window")
+            return
+        }
+
         logDebug("VoiceSessionCoordinator: Speech started")
         appendHistoryEvent(type: .userAudio, metadata: ["state": "speech_started"])
+        hasAcceptedSpeechStart = true
 
         if sessionState == .speaking {
             scheduleConfirmedBargeIn()
@@ -562,6 +834,12 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClientDidDetectSpeechStopped(_ client: any RealtimeClientProtocol) {
+        guard hasAcceptedSpeechStart else {
+            logDebug("VoiceSessionCoordinator: Ignoring speech_stopped without accepted speech_started")
+            return
+        }
+        hasAcceptedSpeechStart = false
+
         logDebug("VoiceSessionCoordinator: Speech stopped")
         appendHistoryEvent(type: .userAudio, metadata: ["state": "speech_stopped"])
 
@@ -588,6 +866,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioDelta base64Audio: String, itemId: String?, contentIndex: Int?) {
+        lastAssistantAudioDeltaAt = Date()
         if let itemId, !itemId.isEmpty {
             currentAudioItemId = itemId
         }
@@ -635,46 +914,67 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveResponseCreated response: [String: Any]) {
         lastAssistantTranscript = ""
         pendingFunctionCalls = []
+        pendingFunctionCallIDs.removeAll()
         currentAudioItemId = nil
         currentAudioContentIndex = nil
+        lastAssistantAudioDeltaAt = nil
+        lastAssistantPlaybackEndedAt = nil
+        clearSpeechTurnState()
+    }
+
+    @discardableResult
+    private func enqueueFunctionCallIfNeeded(callId: String, name: String, arguments: String) -> Bool {
+        guard !callId.isEmpty, !name.isEmpty else {
+            return false
+        }
+        guard !pendingFunctionCallIDs.contains(callId) else {
+            return false
+        }
+
+        pendingFunctionCallIDs.insert(callId)
+        pendingFunctionCalls.append((callId: callId, name: name, arguments: arguments))
+        appendHistoryEvent(
+            type: .toolCall,
+            metadata: [
+                "call_id": callId,
+                "tool": name,
+                "arguments": arguments
+            ]
+        )
+        return true
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveTypedResponseDone response: RealtimeResponseDone) {
         // Check for function calls in the response output
         for call in response.functionCalls {
-            pendingFunctionCalls.append(call)
-            appendHistoryEvent(
-                type: .toolCall,
-                metadata: [
-                    "call_id": call.callId,
-                    "tool": call.name,
-                    "arguments": call.arguments
-                ]
-            )
+            _ = enqueueFunctionCallIfNeeded(callId: call.callId, name: call.name, arguments: call.arguments)
         }
 
         // Execute any pending function calls
         if !pendingFunctionCalls.isEmpty {
-            executePendingFunctionCalls()
+            Task { await executePendingFunctionCallsViaDaemon() }
         } else {
             // No function calls — go back to listening
-            setState(.listening)
-            overlay.show(state: .listening)
+            transitionToListeningWhenPlaybackSettles(reason: "typed_response_done")
         }
     }
 
     func realtimeClientDidReceiveResponseDone(_ client: any RealtimeClientProtocol) {
+        if !pendingFunctionCalls.isEmpty && sessionState != .toolRunning {
+            Task { await executePendingFunctionCallsViaDaemon() }
+            return
+        }
         if pendingFunctionCalls.isEmpty && sessionState != .toolRunning {
-            setState(.listening)
-            overlay.show(state: .listening)
+            transitionToListeningWhenPlaybackSettles(reason: "response_done")
         }
     }
 
     func realtimeClientDidReceiveResponseCancelled(_ client: any RealtimeClientProtocol) {
         pendingFunctionCalls = []
+        pendingFunctionCallIDs.removeAll()
+        clearSpeechTurnState()
         if sessionState == .thinking || sessionState == .speaking {
-            setState(.listening)
-            overlay.show(state: .listening)
+            transitionToListeningWhenPlaybackSettles(reason: "response_cancelled")
         }
     }
 
@@ -699,48 +999,78 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         appendUserTextIfNew(text, itemID: item["id"] as? String)
     }
 
-    // MARK: - Tool Execution
-
-    private func executePendingFunctionCalls() {
-        guard !pendingFunctionCalls.isEmpty else {
-            setState(.listening)
-            overlay.show(state: .listening)
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveConversationItemDone item: [String: Any]) {
+        guard let text = extractUserText(from: item) else {
             return
         }
+        appendUserTextIfNew(text, itemID: item["id"] as? String)
+    }
 
-        guard let handler = toolOrchestrator else {
-            // No workspace set — return errors for all calls
-            for call in pendingFunctionCalls {
-                logError("VoiceSessionCoordinator: No workspace, cannot execute \(call.name)")
-                realtimeClient.sendToolResult(callId: call.callId, output: "Error: No workspace attached. Use 'duck attach' to set a workspace.")
-                appendHistoryEvent(
-                    type: .toolCall,
-                    metadata: [
-                        "tool": call.name,
-                        "error": "No workspace attached"
-                    ]
-                )
-            }
-            pendingFunctionCalls = []
-            realtimeClient.requestModelResponse()
+    func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveFunctionCallItem call: RealtimeFunctionCallItem) {
+        guard enqueueFunctionCallIfNeeded(callId: call.callId, name: call.name, arguments: call.arguments) else {
+            return
+        }
+    }
+
+    // MARK: - Tool Execution
+
+    private func executePendingFunctionCallsViaDaemon() async {
+        guard !pendingFunctionCalls.isEmpty else {
+            transitionToListeningWhenPlaybackSettles(reason: "no_pending_tool_calls")
             return
         }
 
         let calls = pendingFunctionCalls
         pendingFunctionCalls = []
-
+        pendingFunctionCallIDs.removeAll()
         setState(.toolRunning)
 
-        handler.handleFunctionCalls(calls, onToolStart: { [weak self] name in
-            self?.overlay.show(state: .toolRunning(name))
-            self?.appendHistoryEvent(type: .toolCall, metadata: ["tool": name, "state": "start"])
-        }, completion: { [weak self] in
-            // State will transition when the next response arrives from the model
-            logInfo("VoiceSessionCoordinator: All tool calls completed")
-            self?.appendHistoryEvent(type: .toolCall, metadata: ["state": "complete"])
-            self?.setState(.thinking)
-            self?.overlay.show(state: .thinking)
-        })
+        guard let daemon = daemonClient,
+              daemon.isConnected,
+              let wsPath = workspacePath?.path else {
+            // Daemon not connected — return error for all calls
+            for call in calls {
+                realtimeClient.sendToolResult(
+                    callId: call.callId,
+                    output: "Error: CLI daemon not running. Start it with `duck [path]`."
+                )
+            }
+            realtimeClient.requestModelResponse()
+            setState(.thinking)
+            overlay.show(state: .thinking)
+            return
+        }
+
+        for call in calls {
+            overlay.show(state: .toolRunning(call.name))
+            appendHistoryEvent(type: .toolCall, metadata: ["tool": call.name, "state": "start"])
+
+            do {
+                let data = try await daemon.request(
+                    method: "voice_tool_call",
+                    params: [
+                        "callId": call.callId,
+                        "toolName": call.name,
+                        "arguments": call.arguments,
+                        "workspacePath": wsPath
+                    ]
+                )
+                let result = data["result"] as? String ?? "Error: No result from daemon"
+                realtimeClient.sendToolResult(callId: call.callId, output: result)
+            } catch {
+                logError("VoiceSessionCoordinator: Daemon tool call failed for \(call.name): \(error.localizedDescription)")
+                realtimeClient.sendToolResult(
+                    callId: call.callId,
+                    output: "Error: Tool execution failed: \(error.localizedDescription)"
+                )
+            }
+        }
+
+        logInfo("VoiceSessionCoordinator: All tool calls completed via daemon")
+        appendHistoryEvent(type: .toolCall, metadata: ["state": "complete"])
+        realtimeClient.requestModelResponse()
+        setState(.thinking)
+        overlay.show(state: .thinking)
     }
 
     // MARK: - RealtimeClientDelegate: Errors
@@ -756,6 +1086,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         let interruptionRaceError =
             code == "response_cancel_not_active"
             || code == "item_truncate_invalid_item_id"
+            || code == "conversation_already_has_active_response"
             || (code == "invalid_value"
                 && offendingEventType == "conversation.item.truncate"
                 && message.lowercased().contains("already shorter than"))
@@ -768,14 +1099,12 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             currentAudioItemId = nil
             currentAudioContentIndex = nil
             if sessionState == .thinking || sessionState == .speaking {
-                setState(.listening)
-                overlay.show(state: .listening)
+                transitionToListeningWhenPlaybackSettles(reason: "benign_interruption_race_error")
             }
             return
         }
 
-        stopAudioStreaming()
-        playbackManager.stopPlayback()
+        teardownSessionResourcesIfNeeded(reason: "api_error", invalidateGeneration: true)
 
         if retryable {
             setState(.connecting)

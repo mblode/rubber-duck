@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { styleText } from "node:util";
+import { log } from "@clack/prompts";
 import type { Command } from "commander";
 import { DaemonClient } from "../client.js";
 import { ensureDaemon } from "../ensure-daemon.js";
@@ -16,17 +16,11 @@ const REMOVED_COMMANDS = new Set([
   "export",
 ]);
 
-function createColorize(color: boolean) {
-  return (format: Parameters<typeof styleText>[0], value: string): string =>
-    color ? styleText(format, value) : value;
-}
-
 export function registerDefaultAction(program: Command): void {
   program
     .argument("[path]", "Workspace path (defaults to current directory)")
     .action(async (pathArg?: string) => {
       const color = defaultColorEnabled();
-      const colorize = createColorize(color);
       let client: DaemonClient | null = null;
 
       try {
@@ -36,11 +30,8 @@ export function registerDefaultAction(program: Command): void {
           !pathArg.includes("/") &&
           !existsSync(resolveWorkspacePath(pathArg))
         ) {
-          console.error(
-            colorize(
-              "yellow",
-              `\`${pathArg}\` was removed. Use \`duck\` to attach+stream and \`duck say ...\` to send prompts.`
-            )
+          log.warn(
+            `\`${pathArg}\` was removed. Use \`duck\` to attach+stream and \`duck say ...\` to send prompts.`
           );
           process.exit(1);
         }
@@ -53,19 +44,15 @@ export function registerDefaultAction(program: Command): void {
         });
 
         if (!attachResponse.ok) {
-          console.error(colorize("red", `Error: ${attachResponse.error}`));
+          log.error(attachResponse.error ?? "Failed to attach workspace");
           client.close();
           process.exit(1);
         }
 
-        const { workspace, session } = attachResponse.data as {
+        const { session } = attachResponse.data as {
           session: { id: string; name: string };
           workspace: { id: string; path: string };
         };
-
-        console.log(
-          `Attached: ${colorize("bold", workspace.path)} (session ${colorize("cyan", session.name)})`
-        );
 
         await startFollowStream(client, session.id, {
           color,
@@ -75,12 +62,7 @@ export function registerDefaultAction(program: Command): void {
         });
       } catch (err) {
         client?.close();
-        console.error(
-          colorize(
-            "red",
-            `Error: ${err instanceof Error ? err.message : String(err)}`
-          )
-        );
+        log.error(`${err instanceof Error ? err.message : String(err)}`);
         process.exit(1);
       }
     });

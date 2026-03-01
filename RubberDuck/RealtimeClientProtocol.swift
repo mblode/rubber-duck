@@ -5,7 +5,7 @@ import Foundation
 /// Protocol abstracting the Realtime API client so that VoiceSessionCoordinator
 /// and ToolOrchestrator can be tested without a live WebSocket connection.
 @MainActor
-protocol RealtimeClientProtocol: ToolResultSending {
+protocol RealtimeClientProtocol: AnyObject {
     // Connection
     var connectionState: RealtimeConnectionState { get }
     func connect(apiKey: String)
@@ -17,12 +17,14 @@ protocol RealtimeClientProtocol: ToolResultSending {
     // Session configuration
     var model: String { get set }
     var voice: String { get set }
-    var vadEagerness: String { get set }
     var instructions: String { get set }
     var tools: [[String: Any]] { get set }
 
     // Audio
     func sendAudio(base64Chunk: String)
+
+    // Text input
+    func sendMessage(text: String)
 
     // Tool results
     func sendToolResult(callId: String, output: String)

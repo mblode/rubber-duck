@@ -8,9 +8,9 @@ const stripDefineFromRolldownInput = {
   }) => {
     // rolldown@1.0.0-rc.x rejects `define` as an input option.
     // tsdown injects it there by default, causing warning spam per entry.
-    buildOptions.define = undefined;
+    Reflect.deleteProperty(buildOptions, "define");
     // Same issue for `inject` in this toolchain combination.
-    buildOptions.inject = undefined;
+    Reflect.deleteProperty(buildOptions, "inject");
   },
 };
 

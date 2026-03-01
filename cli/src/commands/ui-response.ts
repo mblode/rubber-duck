@@ -1,4 +1,4 @@
-import { styleText } from "node:util";
+import { log } from "@clack/prompts";
 import type { DaemonClient } from "../client.js";
 import { handleUiRequest } from "../renderer/ui-handler.js";
 import type { DaemonEvent } from "../types.js";
@@ -27,22 +27,16 @@ export function handleUiEvent(
             sessionId: event.sessionId,
           })
           .catch((err) => {
-            console.error(
-              styleText(
-                "yellow",
-                `UI response failed: ${err instanceof Error ? err.message : String(err)}`
-              )
+            log.warn(
+              `UI response failed: ${err instanceof Error ? err.message : String(err)}`
             );
           });
       },
     },
     options.interactive
   ).catch((err) => {
-    console.error(
-      styleText(
-        "yellow",
-        `UI prompt failed: ${err instanceof Error ? err.message : String(err)}`
-      )
+    log.warn(
+      `UI prompt failed: ${err instanceof Error ? err.message : String(err)}`
     );
   });
 }

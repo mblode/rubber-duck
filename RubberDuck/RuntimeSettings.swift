@@ -3,7 +3,6 @@ import Foundation
 struct RuntimeSettings {
     let voice: String
     let model: String
-    let vadEagerness: String
     let autoAbortOnBargeIn: Bool
     let safeModeEnabled: Bool
 }
@@ -30,16 +29,6 @@ enum RuntimeSettingsLoader {
             logError("RuntimeSettingsLoader: Invalid stored model '\(storedModel)', falling back to \(VoiceAgentModel.realtime.rawValue)")
         }
 
-        let storedVAD = defaults.string(forKey: "vadEagerness") ?? VADEagerness.low.rawValue
-        let vadEagerness: String
-        if VADEagerness(rawValue: storedVAD) != nil {
-            vadEagerness = storedVAD
-        } else {
-            vadEagerness = VADEagerness.low.rawValue
-            defaults.set(VADEagerness.low.rawValue, forKey: "vadEagerness")
-            logError("RuntimeSettingsLoader: Invalid stored VAD eagerness '\(storedVAD)', falling back to \(VADEagerness.low.rawValue)")
-        }
-
         let autoAbortOnBargeIn: Bool
         if defaults.object(forKey: "autoAbortOnBargeIn") == nil {
             autoAbortOnBargeIn = true
@@ -52,7 +41,6 @@ enum RuntimeSettingsLoader {
         return RuntimeSettings(
             voice: voice,
             model: model,
-            vadEagerness: vadEagerness,
             autoAbortOnBargeIn: autoAbortOnBargeIn,
             safeModeEnabled: safeModeEnabled
         )
