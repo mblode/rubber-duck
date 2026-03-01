@@ -125,6 +125,10 @@ jobs:
     needs: [build-and-test, cli-verify]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-15
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      NOTARIZE_APPLE_ID: ${{ secrets.NOTARIZE_APPLE_ID }}
+      NOTARIZE_PASSWORD: ${{ secrets.NOTARIZE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -152,7 +156,7 @@ jobs:
             -archivePath /tmp/rubber-duck-build/RubberDuck.xcarchive \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
-            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            DEVELOPMENT_TEAM="${{ env.APPLE_TEAM_ID }}" \
             MARKETING_VERSION=${{ steps.version.outputs.VERSION }} \
             archive
 
@@ -166,7 +170,7 @@ jobs:
               <key>method</key>
               <string>developer-id</string>
               <key>teamID</key>
-              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <string>${{ env.APPLE_TEAM_ID }}</string>
               <key>signingStyle</key>
               <string>manual</string>
               <key>signingCertificate</key>
@@ -205,20 +209,20 @@ jobs:
           || test -f "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
 
       - name: Notarize DMG
-        if: ${{ secrets.NOTARIZE_APPLE_ID != '' && secrets.NOTARIZE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+        if: ${{ env.NOTARIZE_APPLE_ID != '' && env.NOTARIZE_PASSWORD != '' && env.APPLE_TEAM_ID != '' }}
         run: |
           xcrun notarytool submit "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
-            --apple-id "${{ secrets.NOTARIZE_APPLE_ID }}" \
-            --password "${{ secrets.NOTARIZE_PASSWORD }}" \
-            --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+            --apple-id "${{ env.NOTARIZE_APPLE_ID }}" \
+            --password "${{ env.NOTARIZE_PASSWORD }}" \
+            --team-id "${{ env.APPLE_TEAM_ID }}" \
             --wait
 
       - name: Staple notarization ticket
-        if: ${{ secrets.NOTARIZE_APPLE_ID != '' && secrets.NOTARIZE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
+        if: ${{ env.NOTARIZE_APPLE_ID != '' && env.NOTARIZE_PASSWORD != '' && env.APPLE_TEAM_ID != '' }}
         run: xcrun stapler staple "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
 
       - name: Skip notarization (missing secrets)
-        if: ${{ secrets.NOTARIZE_APPLE_ID == '' || secrets.NOTARIZE_PASSWORD == '' || secrets.APPLE_TEAM_ID == '' }}
+        if: ${{ env.NOTARIZE_APPLE_ID == '' || env.NOTARIZE_PASSWORD == '' || env.APPLE_TEAM_ID == '' }}
         run: |
           echo "::warning::NOTARIZE_APPLE_ID / NOTARIZE_PASSWORD not configured. Publishing signed-but-unstapled DMG."
 
