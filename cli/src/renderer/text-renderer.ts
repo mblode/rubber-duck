@@ -424,10 +424,13 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
           write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
           break;
         }
+        const state = event.metadata?.state ?? "activity";
         if (!options.verbose) {
+          if (state === "speech_stopped") {
+            write(`${tag.you(USER_LABEL)} ${text.you("[voice message]")}\n`);
+          }
           break;
         }
-        const state = event.metadata?.state ?? "activity";
         write(`${tag.you(formatTag("voice"))} ${text.you(state)}\n`);
         break;
       }

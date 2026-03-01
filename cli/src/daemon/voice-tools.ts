@@ -404,8 +404,12 @@ function bash(
         return resolve("Error: Command not allowed in safe mode");
       }
       proc = spawn(parsed[0], parsed.slice(1), { cwd: workspaceRoot });
-    } else {
+    } else if (existsSync("/bin/zsh")) {
       proc = spawn("/bin/zsh", ["-c", command], { cwd: workspaceRoot });
+    } else if (existsSync("/bin/bash")) {
+      proc = spawn("/bin/bash", ["-lc", command], { cwd: workspaceRoot });
+    } else {
+      proc = spawn("sh", ["-c", command], { cwd: workspaceRoot });
     }
 
     const stdoutChunks: Buffer[] = [];

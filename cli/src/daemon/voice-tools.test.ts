@@ -292,24 +292,27 @@ describe("find_files", () => {
 describe("web_search", () => {
   let previousExaKey: string | undefined;
   let previousRubberDuckExaKey: string | undefined;
+  const unsetEnv = (key: "EXA_API_KEY" | "RUBBER_DUCK_EXA_API_KEY"): void => {
+    Reflect.deleteProperty(process.env, key);
+  };
 
   beforeEach(() => {
     previousExaKey = process.env.EXA_API_KEY;
     previousRubberDuckExaKey = process.env.RUBBER_DUCK_EXA_API_KEY;
-    process.env.EXA_API_KEY = undefined;
-    process.env.RUBBER_DUCK_EXA_API_KEY = undefined;
+    unsetEnv("EXA_API_KEY");
+    unsetEnv("RUBBER_DUCK_EXA_API_KEY");
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     if (previousExaKey === undefined) {
-      process.env.EXA_API_KEY = undefined;
+      unsetEnv("EXA_API_KEY");
     } else {
       process.env.EXA_API_KEY = previousExaKey;
     }
 
     if (previousRubberDuckExaKey === undefined) {
-      process.env.RUBBER_DUCK_EXA_API_KEY = undefined;
+      unsetEnv("RUBBER_DUCK_EXA_API_KEY");
     } else {
       process.env.RUBBER_DUCK_EXA_API_KEY = previousRubberDuckExaKey;
     }
