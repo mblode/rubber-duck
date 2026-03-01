@@ -184,16 +184,22 @@ jobs:
       - name: Install create-dmg
         run: brew install create-dmg
 
+      - name: Generate DMG background
+        run: swift installer/make-dmg-bg.swift
+
       - name: Create DMG
         run: |
           create-dmg \
             --volname "RubberDuck" \
+            --background "installer/dmg-background.png" \
             --window-pos 200 120 \
-            --window-size 600 400 \
+            --window-size 700 460 \
             --icon-size 128 \
-            --icon "RubberDuck.app" 150 190 \
-            --app-drop-link 450 190 \
+            --icon "RubberDuck.app" 175 230 \
+            --app-drop-link 525 230 \
             --hide-extension "RubberDuck.app" \
+            --text-size 14 \
+            --volicon "/tmp/rubber-duck-build/export/RubberDuck.app/Contents/Resources/AppIcon.icns" \
             --no-internet-enable \
             "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
             "/tmp/rubber-duck-build/export/RubberDuck.app" \
@@ -306,6 +312,7 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           SHA256="${{ steps.sha.outputs.SHA256 }}"
+          CASK_PATH="Casks/rubber-duck.rb"
 
           # Generate cask file
           cat > /tmp/rubber-duck.rb << EOF
@@ -329,13 +336,18 @@ jobs:
             ]
           end
           EOF
+          CONTENT_B64="$(base64 < /tmp/rubber-duck.rb | tr -d '\n')"
 
-          # Get current file SHA from tap repo
-          FILE_SHA=$(gh api repos/mblode/homebrew-tap/contents/Casks/rubber-duck.rb --jq '.sha')
-
-          # Push updated cask
-          gh api repos/mblode/homebrew-tap/contents/Casks/rubber-duck.rb \
-            -X PUT \
-            -f message="Update rubber-duck to ${VERSION}" \
-            -f content="$(base64 < /tmp/rubber-duck.rb)" \
-            -f sha="${FILE_SHA}"
+          # Create the cask file on first publish, then update it on subsequent releases.
+          if FILE_SHA=$(gh api "repos/mblode/homebrew-tap/contents/${CASK_PATH}" --jq '.sha' 2>/dev/null); then
+            gh api "repos/mblode/homebrew-tap/contents/${CASK_PATH}" \
+              -X PUT \
+              -f message="Update rubber-duck to ${VERSION}" \
+              -f content="${CONTENT_B64}" \
+              -f sha="${FILE_SHA}"
+          else
+            gh api "repos/mblode/homebrew-tap/contents/${CASK_PATH}" \
+              -X PUT \
+              -f message="Add rubber-duck cask ${VERSION}" \
+              -f content="${CONTENT_B64}"
+          fi

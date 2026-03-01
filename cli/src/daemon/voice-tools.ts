@@ -772,16 +772,20 @@ function parseBoundedPositiveInt(
   return parsed;
 }
 
-async function webSearch(args: Record<string, unknown>): Promise<string> {
+interface WebSearchConfig {
+  excludeDomains: string[] | null;
+  includeDomains: string[] | null;
+  includeText: boolean;
+  numResults: number;
+  query: string;
+}
+
+function parseWebSearchConfig(
+  args: Record<string, unknown>
+): WebSearchConfig | string {
   const query = extractStringArg(args, ["query", "q", "search", "prompt"]);
   if (!query) {
     return "Error: Missing required parameter 'query'";
-  }
-
-  const apiKey =
-    process.env.RUBBER_DUCK_EXA_API_KEY ?? process.env.EXA_API_KEY ?? "";
-  if (!apiKey) {
-    return "Error: EXA_API_KEY not configured. Set EXA_API_KEY (or RUBBER_DUCK_EXA_API_KEY) to enable web_search.";
   }
 
   const requestedNumResults = parseBoundedPositiveInt(
@@ -789,33 +793,56 @@ async function webSearch(args: Record<string, unknown>): Promise<string> {
     1,
     WEB_SEARCH_MAX_RESULTS
   );
-  const numResults = requestedNumResults ?? WEB_SEARCH_DEFAULT_RESULTS;
-  const includeText = args.include_text === true || args.includeText === true;
-  const includeDomains = extractStringArrayArg(args, [
-    "include_domains",
-    "includeDomains",
-    "domains",
-  ]);
-  const excludeDomains = extractStringArrayArg(args, [
-    "exclude_domains",
-    "excludeDomains",
-  ]);
 
-  const body: Record<string, unknown> = {
+  return {
     query,
-    numResults,
+    numResults: requestedNumResults ?? WEB_SEARCH_DEFAULT_RESULTS,
+    includeText: args.include_text === true || args.includeText === true,
+    includeDomains: extractStringArrayArg(args, [
+      "include_domains",
+      "includeDomains",
+      "domains",
+    ]),
+    excludeDomains: extractStringArrayArg(args, [
+      "exclude_domains",
+      "excludeDomains",
+    ]),
+  };
+}
+
+function buildWebSearchBody(config: WebSearchConfig): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    query: config.query,
+    numResults: config.numResults,
     type: "auto",
   };
-  if (includeText) {
+
+  if (config.includeText) {
     body.text = true;
   }
-  if (includeDomains && includeDomains.length > 0) {
-    body.includeDomains = includeDomains;
+  if (config.includeDomains && config.includeDomains.length > 0) {
+    body.includeDomains = config.includeDomains;
   }
-  if (excludeDomains && excludeDomains.length > 0) {
-    body.excludeDomains = excludeDomains;
+  if (config.excludeDomains && config.excludeDomains.length > 0) {
+    body.excludeDomains = config.excludeDomains;
   }
 
+  return body;
+}
+
+function formatWebSearchError(response: Response, errorText: string): string {
+  if (errorText.length === 0) {
+    return `Error: web_search failed (${response.status} ${response.statusText})`;
+  }
+  return truncateOutput(
+    `Error: web_search failed (${response.status} ${response.statusText}): ${errorText}`
+  );
+}
+
+async function fetchWebSearchResults(
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<unknown | string> {
   let response: Response;
   try {
     response = await fetch(EXA_SEARCH_ENDPOINT, {
@@ -836,77 +863,98 @@ async function webSearch(args: Record<string, unknown>): Promise<string> {
 
   if (!response.ok) {
     const errorText = (await response.text()).trim();
-    if (errorText.length > 0) {
-      return truncateOutput(
-        `Error: web_search failed (${response.status} ${response.statusText}): ${errorText}`
-      );
-    }
-    return `Error: web_search failed (${response.status} ${response.statusText})`;
+    return formatWebSearchError(response, errorText);
   }
 
-  let payload: unknown;
   try {
-    payload = await response.json();
+    return await response.json();
   } catch (err) {
     return `Error: web_search returned invalid JSON: ${String(err)}`;
   }
+}
 
-  if (!isRecord(payload) || !Array.isArray(payload.results)) {
-    return "Error: web_search response missing expected 'results' array";
+function appendWebSearchPublishedDate(
+  lines: string[],
+  result: Record<string, unknown>
+): void {
+  if (
+    typeof result.publishedDate === "string" &&
+    result.publishedDate.trim().length > 0
+  ) {
+    lines.push(`   Published: ${result.publishedDate.trim()}`);
+  }
+}
+
+function appendWebSearchScore(
+  lines: string[],
+  result: Record<string, unknown>
+): void {
+  if (typeof result.score === "number" && Number.isFinite(result.score)) {
+    lines.push(`   Score: ${result.score.toFixed(3)}`);
+  }
+}
+
+function appendWebSearchSnippet(
+  lines: string[],
+  result: Record<string, unknown>
+): void {
+  if (typeof result.text !== "string" || result.text.trim().length === 0) {
+    return;
   }
 
-  const results = payload.results;
-  if (results.length === 0) {
-    return `No web results found for '${query}'`;
+  const normalized = result.text.replaceAll(/\s+/g, " ").trim();
+  const snippet =
+    normalized.length > 400 ? `${normalized.slice(0, 400)}...` : normalized;
+  lines.push(`   Snippet: ${snippet}`);
+}
+
+function formatWebSearchResultRow(
+  result: Record<string, unknown>,
+  rank: number,
+  includeText: boolean
+): string[] | null {
+  const title =
+    typeof result.title === "string" && result.title.trim().length > 0
+      ? result.title.trim()
+      : "(untitled)";
+  const url =
+    typeof result.url === "string" && result.url.trim().length > 0
+      ? result.url.trim()
+      : "";
+  if (!url) {
+    return null;
   }
 
+  const lines = [`${rank}. ${title}`, `   URL: ${url}`];
+  appendWebSearchPublishedDate(lines, result);
+  appendWebSearchScore(lines, result);
+  if (includeText) {
+    appendWebSearchSnippet(lines, result);
+  }
+  lines.push("");
+
+  return lines;
+}
+
+function formatWebSearchResults(
+  results: unknown[],
+  query: string,
+  includeText: boolean
+): string {
   const lines: string[] = [];
   let rank = 1;
+
   for (const result of results) {
     if (!isRecord(result)) {
       continue;
     }
 
-    const title =
-      typeof result.title === "string" && result.title.trim().length > 0
-        ? result.title.trim()
-        : "(untitled)";
-    const url =
-      typeof result.url === "string" && result.url.trim().length > 0
-        ? result.url.trim()
-        : "";
-    if (!url) {
+    const row = formatWebSearchResultRow(result, rank, includeText);
+    if (!row) {
       continue;
     }
 
-    lines.push(`${rank}. ${title}`);
-    lines.push(`   URL: ${url}`);
-
-    if (
-      typeof result.publishedDate === "string" &&
-      result.publishedDate.trim().length > 0
-    ) {
-      lines.push(`   Published: ${result.publishedDate.trim()}`);
-    }
-
-    if (typeof result.score === "number" && Number.isFinite(result.score)) {
-      lines.push(`   Score: ${result.score.toFixed(3)}`);
-    }
-
-    if (
-      includeText &&
-      typeof result.text === "string" &&
-      result.text.trim().length > 0
-    ) {
-      const normalized = result.text.replaceAll(/\s+/g, " ").trim();
-      const snippet =
-        normalized.length > 400
-          ? `${normalized.slice(0, 400)}...`
-          : normalized;
-      lines.push(`   Snippet: ${snippet}`);
-    }
-
-    lines.push("");
+    lines.push(...row);
     rank += 1;
   }
 
@@ -915,6 +963,37 @@ async function webSearch(args: Record<string, unknown>): Promise<string> {
   }
 
   return truncateOutput(lines.join("\n").trim());
+}
+
+async function webSearch(args: Record<string, unknown>): Promise<string> {
+  const config = parseWebSearchConfig(args);
+  if (typeof config === "string") {
+    return config;
+  }
+
+  const apiKey =
+    process.env.RUBBER_DUCK_EXA_API_KEY ?? process.env.EXA_API_KEY ?? "";
+  if (!apiKey) {
+    return "Error: EXA_API_KEY not configured. Set EXA_API_KEY (or RUBBER_DUCK_EXA_API_KEY) to enable web_search.";
+  }
+
+  const payload = await fetchWebSearchResults(
+    apiKey,
+    buildWebSearchBody(config)
+  );
+  if (typeof payload === "string") {
+    return payload;
+  }
+
+  if (!(isRecord(payload) && Array.isArray(payload.results))) {
+    return "Error: web_search response missing expected 'results' array";
+  }
+
+  return formatWebSearchResults(
+    payload.results,
+    config.query,
+    config.includeText
+  );
 }
 
 // ---------------------------------------------------------------------------

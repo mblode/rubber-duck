@@ -296,20 +296,20 @@ describe("web_search", () => {
   beforeEach(() => {
     previousExaKey = process.env.EXA_API_KEY;
     previousRubberDuckExaKey = process.env.RUBBER_DUCK_EXA_API_KEY;
-    delete process.env.EXA_API_KEY;
-    delete process.env.RUBBER_DUCK_EXA_API_KEY;
+    process.env.EXA_API_KEY = undefined;
+    process.env.RUBBER_DUCK_EXA_API_KEY = undefined;
     vi.restoreAllMocks();
   });
 
   afterEach(() => {
     if (previousExaKey === undefined) {
-      delete process.env.EXA_API_KEY;
+      process.env.EXA_API_KEY = undefined;
     } else {
       process.env.EXA_API_KEY = previousExaKey;
     }
 
     if (previousRubberDuckExaKey === undefined) {
-      delete process.env.RUBBER_DUCK_EXA_API_KEY;
+      process.env.RUBBER_DUCK_EXA_API_KEY = undefined;
     } else {
       process.env.RUBBER_DUCK_EXA_API_KEY = previousRubberDuckExaKey;
     }

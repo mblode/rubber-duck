@@ -550,12 +550,7 @@ export class RequestHandler {
   private async voiceToolCall(
     request: RequestFor<"voice_tool_call">
   ): Promise<DaemonResponse> {
-    const {
-      callId,
-      toolName,
-      arguments: argsJson,
-      workspacePath,
-    } = request.params;
+    const { callId, toolName, arguments: argsJson } = request.params;
 
     const activeSession = this.metadataStore.getActiveVoiceSession();
     if (!activeSession) {
@@ -576,12 +571,6 @@ export class RequestHandler {
         error: "Active workspace not found for voice session",
       };
     }
-
-    // `workspacePath` from the voice client is advisory only. Use the active
-    // daemon workspace as the execution source-of-truth so minor path
-    // normalization differences (symlinks, casing, trailing slash) do not
-    // cause false tool failures mid-conversation.
-    void workspacePath;
 
     const result = await executeVoiceTool(
       toolName,
