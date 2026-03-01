@@ -97,13 +97,12 @@ jobs:
           ln -s "$GITHUB_WORKSPACE/cli" "$TMP_HOME/repo"
 
           node dist/cli.js sessions --all
-          node dist/cli.js attach ~/repo
-          node dist/cli.js sessions --all
-          node dist/cli.js follow --json duck-1 > "$TMP_HOME/follow.log" 2>&1 &
-          FOLLOW_PID=$!
+          node dist/cli.js ~/repo > "$TMP_HOME/attach.log" 2>&1 &
+          ATTACH_PID=$!
           sleep 2
-          kill -INT "$FOLLOW_PID" || true
-          wait "$FOLLOW_PID" || true
+          kill -INT "$ATTACH_PID" || true
+          wait "$ATTACH_PID" || true
+          node dist/cli.js sessions --all
 
           set +e
           node dist/cli.js doctor > "$TMP_HOME/doctor.log" 2>&1
