@@ -205,6 +205,7 @@ jobs:
           || test -f "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
 
       - name: Notarize DMG
+        if: ${{ secrets.NOTARIZE_APPLE_ID != '' && secrets.NOTARIZE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         run: |
           xcrun notarytool submit "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
             --apple-id "${{ secrets.NOTARIZE_APPLE_ID }}" \
@@ -213,7 +214,13 @@ jobs:
             --wait
 
       - name: Staple notarization ticket
+        if: ${{ secrets.NOTARIZE_APPLE_ID != '' && secrets.NOTARIZE_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         run: xcrun stapler staple "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
+
+      - name: Skip notarization (missing secrets)
+        if: ${{ secrets.NOTARIZE_APPLE_ID == '' || secrets.NOTARIZE_PASSWORD == '' || secrets.APPLE_TEAM_ID == '' }}
+        run: |
+          echo "::warning::NOTARIZE_APPLE_ID / NOTARIZE_PASSWORD not configured. Publishing signed-but-unstapled DMG."
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
