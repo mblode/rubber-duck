@@ -143,13 +143,55 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
         try await Task.sleep(nanoseconds: 120_000_000)
 
-        // With a generic playback mock we only assert the behavioral effect
-        // of confirmed barge-in (stop playback + move to listening). The
-        // concrete truncate payload is covered through integration behavior
-        // with AudioPlaybackManager item accounting.
         XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1)
         XCTAssertGreaterThanOrEqual(harness.playbackManager.startPlaybackCallCount, 1)
+        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 1)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-42")
+        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].contentIndex, 0)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].audioEnd, 0)
+        XCTAssertFalse(harness.realtimeClient.truncateCalls[0].sendCancel)
         XCTAssertEqual(harness.coordinator.sessionState, .listening)
+    }
+
+    func test_staleAudioDeltaAfterBargeIn_isIgnoredUntilNextResponseCreated() async throws {
+        let harness = makeHarness(bargeInDelay: 0.03)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-stale",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        try await Task.sleep(nanoseconds: 260_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 120_000_000)
+        XCTAssertEqual(harness.coordinator.sessionState, .listening)
+
+        // This delta belongs to the interrupted response and should be dropped.
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "BBBB",
+            itemId: "item-stale",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .listening)
+
+        // New response boundary re-enables assistant audio handling.
+        harness.coordinator.realtimeClient(harness.realtimeClient, didReceiveResponseCreated: [:])
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "CCCC",
+            itemId: "item-next",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 
     func test_speechStartedDuringSpeakingWithoutAEC_isIgnoredEvenIfMuteRaceOccurs() async throws {

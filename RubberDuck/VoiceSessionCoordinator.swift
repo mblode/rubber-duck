@@ -90,6 +90,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 1.0
     private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 6.0
     private var pendingListeningTransitionWorkItem: DispatchWorkItem?
+    private var suppressAssistantAudioUntilNextResponseCreated = false
+    private var didHandleTypedResponseDoneForCurrentResponse = false
 
     // Track pending function calls from the current response
     private var pendingFunctionCalls: [(callId: String, name: String, arguments: String)] = []
@@ -317,37 +319,43 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             )
         }
 
-        if autoAbortOnBargeIn,
-           let itemId = currentAudioItemId,
-           let contentIndex = currentAudioContentIndex,
-           snapshot.itemScheduledSamples > 0 {
-            let rawAudioEndMs = snapshot.itemPlayedSamples * 1000 / Int(AudioConstants.sampleRate)
-            let itemDurationMs = snapshot.itemScheduledSamples * 1000 / Int(AudioConstants.sampleRate)
-            let clampedAudioEndMs = min(max(rawAudioEndMs, 0), itemDurationMs)
+        if autoAbortOnBargeIn {
+            // Ignore straggling output_audio deltas from the interrupted response
+            // until the server declares a new response boundary.
+            suppressAssistantAudioUntilNextResponseCreated = true
+            realtimeClient.cancelResponse()
 
-            if clampedAudioEndMs != rawAudioEndMs {
-                logDebug(
-                    "VoiceSessionCoordinator: Clamped truncate audioEnd from \(rawAudioEndMs)ms to \(clampedAudioEndMs)ms for item \(itemId)"
+            if let itemId = currentAudioItemId,
+               let contentIndex = currentAudioContentIndex {
+                let clampedAudioEndMs: Int
+                if snapshot.itemScheduledSamples > 0 {
+                    let rawAudioEndMs = snapshot.itemPlayedSamples * 1000 / Int(AudioConstants.sampleRate)
+                    let itemDurationMs = snapshot.itemScheduledSamples * 1000 / Int(AudioConstants.sampleRate)
+                    clampedAudioEndMs = min(max(rawAudioEndMs, 0), itemDurationMs)
+
+                    if clampedAudioEndMs != rawAudioEndMs {
+                        logDebug(
+                            "VoiceSessionCoordinator: Clamped truncate audioEnd from \(rawAudioEndMs)ms to \(clampedAudioEndMs)ms for item \(itemId)"
+                        )
+                    }
+                } else {
+                    clampedAudioEndMs = 0
+                }
+
+                realtimeClient.truncateResponse(
+                    itemId: itemId,
+                    contentIndex: contentIndex,
+                    audioEnd: clampedAudioEndMs,
+                    sendCancel: false
                 )
+                logDebug(
+                    "VoiceSessionCoordinator: Sent cancel+truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
+                )
+            } else {
+                logDebug("VoiceSessionCoordinator: Sent response.cancel without truncate (no active audio item metadata)")
             }
-
-            // Cancel any in-flight response and truncate emitted audio so the
-            // next turn starts from a clean response lifecycle.
-            realtimeClient.truncateResponse(
-                itemId: itemId,
-                contentIndex: contentIndex,
-                audioEnd: clampedAudioEndMs,
-                sendCancel: true
-            )
-            logDebug(
-                "VoiceSessionCoordinator: Sent cancel+truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
-            )
         } else if !autoAbortOnBargeIn {
             logInfo("VoiceSessionCoordinator: Auto-abort on barge-in disabled, skipping truncate")
-        } else {
-            logDebug(
-                "VoiceSessionCoordinator: Skipping truncate on barge-in (itemId=\(currentAudioItemId ?? "none"), contentIndex=\(currentAudioContentIndex.map(String.init) ?? "none"), itemScheduled=\(snapshot.itemScheduledSamples))"
-            )
         }
 
         // Re-arm the player node so the next response can be scheduled.
@@ -370,6 +378,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         if state == .idle {
             clearSpeechTurnState()
             vadSuppressedUntil = .distantPast
+            suppressAssistantAudioUntilNextResponseCreated = false
+            didHandleTypedResponseDoneForCurrentResponse = false
         }
 
         if state == .speaking {
@@ -444,7 +454,20 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
-        let maxWait: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 3.0
+        let baseMaxWait: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 3.0
+        let cappedMaxWait: TimeInterval = audioManager.isEchoCancellationActive ? 8.0 : 20.0
+        let safetyMargin: TimeInterval = audioManager.isEchoCancellationActive ? 0.4 : 0.8
+
+        var maxWait = baseMaxWait
+        if let manager = playbackManager as? AudioPlaybackManager {
+            let estimatedUnplayed = manager.estimatedUnplayedDurationSeconds()
+            let adaptiveWait = estimatedUnplayed + safetyMargin
+            maxWait = min(max(baseMaxWait, adaptiveWait), cappedMaxWait)
+            logDebug(
+                "VoiceSessionCoordinator: Waiting for playback settle (\(reason)) with adaptive timeout \(String(format: "%.2f", maxWait))s (estimated_unplayed=\(String(format: "%.2f", estimatedUnplayed))s)"
+            )
+        }
+
         let deadline = Date().addingTimeInterval(maxWait)
         scheduleListeningTransitionPoll(deadline: deadline, reason: reason)
     }
@@ -866,6 +889,10 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioDelta base64Audio: String, itemId: String?, contentIndex: Int?) {
+        if suppressAssistantAudioUntilNextResponseCreated {
+            logDebug("VoiceSessionCoordinator: Dropping stale assistant audio delta while waiting for next response boundary")
+            return
+        }
         lastAssistantAudioDeltaAt = Date()
         if let itemId, !itemId.isEmpty {
             currentAudioItemId = itemId
@@ -884,6 +911,10 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioDone itemId: String, contentIndex: Int?) {
+        if suppressAssistantAudioUntilNextResponseCreated {
+            logDebug("VoiceSessionCoordinator: Ignoring stale audio_done while waiting for next response boundary")
+            return
+        }
         if !itemId.isEmpty {
             currentAudioItemId = itemId
         }
@@ -912,6 +943,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     // MARK: - RealtimeClientDelegate: Response Lifecycle
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveResponseCreated response: [String: Any]) {
+        suppressAssistantAudioUntilNextResponseCreated = false
+        didHandleTypedResponseDoneForCurrentResponse = false
         lastAssistantTranscript = ""
         pendingFunctionCalls = []
         pendingFunctionCallIDs.removeAll()
@@ -945,6 +978,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveTypedResponseDone response: RealtimeResponseDone) {
+        didHandleTypedResponseDoneForCurrentResponse = true
+
         // Check for function calls in the response output
         for call in response.functionCalls {
             _ = enqueueFunctionCallIfNeeded(callId: call.callId, name: call.name, arguments: call.arguments)
@@ -960,6 +995,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func realtimeClientDidReceiveResponseDone(_ client: any RealtimeClientProtocol) {
+        if didHandleTypedResponseDoneForCurrentResponse {
+            return
+        }
         if !pendingFunctionCalls.isEmpty && sessionState != .toolRunning {
             Task { await executePendingFunctionCallsViaDaemon() }
             return

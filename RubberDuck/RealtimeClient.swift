@@ -178,12 +178,16 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
         sendEvent(responseEvent)
     }
 
+    func cancelResponse() {
+        let cancelEvent: [String: Any] = [
+            "type": "response.cancel"
+        ]
+        sendEvent(cancelEvent)
+    }
+
     func truncateResponse(itemId: String, contentIndex: Int, audioEnd: Int, sendCancel: Bool = false) {
         if sendCancel {
-            let cancelEvent: [String: Any] = [
-                "type": "response.cancel"
-            ]
-            sendEvent(cancelEvent)
+            cancelResponse()
         }
         let truncateEvent: [String: Any] = [
             "type": "conversation.item.truncate",
@@ -718,6 +722,10 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
         case .responseDone(let typed, _):
             if let typed {
                 delegate?.realtimeClient(self, didReceiveTypedResponseDone: typed)
+                let normalizedStatus = typed.response.status?.lowercased()
+                if normalizedStatus == "cancelled" || normalizedStatus == "canceled" {
+                    delegate?.realtimeClientDidReceiveResponseCancelled(self)
+                }
             } else {
                 logDebug("RealtimeClient: Failed to decode typed response.done")
             }

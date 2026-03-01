@@ -76,7 +76,9 @@ class AudioPlaybackManager: ObservableObject {
             self.resetPlaybackMetrics()
             playerNode.play()
             DispatchQueue.main.async {
-                self.isPlaying = true
+                // The player is armed, but no assistant audio is scheduled yet.
+                // Report playback as active only once chunks are enqueued.
+                self.isPlaying = false
             }
             logInfo("AudioPlaybackManager: Playback started")
         }
@@ -142,6 +144,18 @@ class AudioPlaybackManager: ObservableObject {
                 itemUnplayedSamples: itemUnplayed
             )
         }
+    }
+
+    func estimatedUnplayedSamples() -> Int {
+        playbackQueue.sync {
+            let scheduled = totalSamplesScheduled
+            let played = min(totalSamplesPlayed, scheduled)
+            return max(scheduled - played, 0)
+        }
+    }
+
+    func estimatedUnplayedDurationSeconds() -> TimeInterval {
+        TimeInterval(estimatedUnplayedSamples()) / AudioConstants.sampleRate
     }
 
     // MARK: - Audio Enqueueing

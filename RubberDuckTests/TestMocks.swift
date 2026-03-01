@@ -64,9 +64,14 @@ final class MockRealtimeClient: RealtimeClientProtocol {
 
     var truncateCalls: [TruncateCall] = []
     var requestModelResponseCallCount = 0
+    var cancelResponseCallCount = 0
 
     func requestModelResponse() {
         requestModelResponseCallCount += 1
+    }
+
+    func cancelResponse() {
+        cancelResponseCallCount += 1
     }
 
     func truncateResponse(itemId: String, contentIndex: Int, audioEnd: Int, sendCancel: Bool) {

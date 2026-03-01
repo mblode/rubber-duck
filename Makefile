@@ -11,7 +11,7 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 CODESIGN_IDENTITY ?= Developer ID Application
 TEAM_ID ?= $(APPLE_TEAM_ID)
 
-.PHONY: build test cli-build cli-test e2e-swift e2e-cli e2e-smoke e2e archive export dmg notarize clean unused
+.PHONY: build test cli-build cli-test e2e-swift e2e-cli e2e-smoke e2e smoke-live archive export dmg notarize clean unused
 
 build:
 	xcodebuild -scheme $(SCHEME) \
@@ -44,6 +44,9 @@ e2e-smoke: ## Run CLI shell smoke test (requires OPENAI_API_KEY or ANTHROPIC_API
 	cd cli && scripts/e2e-smoke.sh
 
 e2e: e2e-swift e2e-cli e2e-smoke ## Run all E2E tests
+
+smoke-live: ## Run live hardware barge-in smoke test with generated sample clips
+	./scripts/live-hardware-smoke.sh run
 
 archive:
 	xcodebuild -scheme $(SCHEME) \

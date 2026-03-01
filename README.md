@@ -138,6 +138,16 @@ cd cli && npm test
 make e2e
 ```
 
+### Live hardware barge-in smoke test
+
+```bash
+# 1) Start the app and begin voice listening (Option+D)
+# 2) Run the live smoke scenario (plays question + interruption clips through speakers)
+make smoke-live
+```
+
+This script generates sample clips under `/tmp/rubber-duck-live-smoke/`, waits for the assistant to enter speaking state, then plays an interruption clip and checks `RubberDuck.log` for barge-in markers.
+
 ## Troubleshooting
 
 - If the menu bar icon is hidden (common with menu bar overflow apps), press `Option+Shift+D` to open Settings directly.

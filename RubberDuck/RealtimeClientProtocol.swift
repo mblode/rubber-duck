@@ -31,6 +31,7 @@ protocol RealtimeClientProtocol: AnyObject {
 
     // Response management
     func requestModelResponse()
+    func cancelResponse()
     func truncateResponse(itemId: String, contentIndex: Int, audioEnd: Int, sendCancel: Bool)
 }
 
