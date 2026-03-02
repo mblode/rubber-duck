@@ -5,30 +5,14 @@
 <h1 align="center">Rubber Duck</h1>
 
 <p align="center">
-  A voice agent in the macOS menu bar. Hold <code>Option+D</code>, speak to your codebase,
-  and hear the answer spoken back — while every file read, edit, and command
-  scrolls through your terminal.
+  Voice coding agent for macOS. Hold a hotkey, speak to your codebase, hear answers back.
 </p>
 
-<p align="center">
-  BYO OpenAI API key. No subscription. No editor dependency. <a href="LICENSE.md">MIT license</a>.
-</p>
+## How it works
 
-## What it does
+Hold `Option+D` and speak. The agent reads your files, edits code, runs commands, and talks back — all streamed to your terminal via the `duck` CLI.
 
-Hold `Option+D` and speak. The agent:
-
-- Reads files you mention or searches for them
-- Edits code and explains what changed
-- Runs bash commands in your workspace
-- Searches definitions, usages, and patterns with grep
-- Speaks the answer back — summarising rather than reading files verbatim
-
-Interrupt at any time. The agent stops immediately (barge-in).
-
-Every step appears in your terminal via `duck [path]`. Nothing is hidden.
-
-Default shortcuts: `Option+D` to activate voice, `Option+Shift+D` to open Settings.
+Interrupt mid-sentence and it stops immediately. Nothing is hidden.
 
 ## Install
 
@@ -41,33 +25,26 @@ brew install --cask rubber-duck
 
 Or [download the latest DMG](https://github.com/mblode/rubber-duck/releases/latest) directly.
 
-The `duck` CLI is installed automatically on first launch.
+The `duck` CLI installs automatically on first launch.
 
 ## Usage
 
 ```bash
-# Attach a workspace and stream all events
-duck ~/projects/myapp
-
-# Send a typed message to the active session
-duck say "refactor the auth middleware to use async/await"
-
-# List sessions
-duck sessions
-
-# Check system health
-duck doctor
+duck ~/projects/myapp          # attach a workspace and stream events
+duck say "fix the auth bug"    # send a typed message
+duck sessions                  # list sessions
+duck doctor                    # check system health
 ```
 
 ## Updates
 
-- Direct-download installs can use **Check for Updates…** from Settings
-- Homebrew installs: `brew upgrade --cask rubber-duck`
+- Direct downloads: **Check for Updates…** in Settings
+- Homebrew: `brew upgrade --cask rubber-duck`
 
 ## Troubleshooting
 
-- If the menu bar icon is hidden (common with menu bar overflow apps), press `Option+Shift+D` to open Settings directly
-- If `duck` commands hang, run `duck doctor` to check daemon health or restart with `pkill -f duck-daemon`
+- Menu bar icon hidden? Press `Option+Shift+D` to open Settings directly
+- `duck` commands hanging? Run `duck doctor` or restart with `pkill -f duck-daemon`
 
 ## License
 
