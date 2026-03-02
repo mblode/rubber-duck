@@ -69,11 +69,21 @@ export async function ensureDaemon(
   const s = quiet ? null : spinner();
   s?.start("Starting daemon...");
 
-  const currentFile = fileURLToPath(import.meta.url);
-  const distDir = dirname(currentFile);
-  const daemonPath = join(distDir, "daemon.js");
+  // In a standalone pkg binary, process.execPath is the rubber-duck binary itself.
+  // Spawn it with --daemon to start the daemon process.
+  // In normal npm installation, spawn node with the daemon.js path.
+  const isPackaged =
+    typeof (process as NodeJS.Process & { pkg?: unknown }).pkg !== "undefined";
+  const daemonArgs = isPackaged
+    ? ["--daemon", "--verbose"]
+    : (() => {
+        const currentFile = fileURLToPath(import.meta.url);
+        const distDir = dirname(currentFile);
+        const daemonPath = join(distDir, "daemon.js");
+        return [daemonPath, "--verbose"];
+      })();
 
-  const child = spawn(process.execPath, [daemonPath, "--verbose"], {
+  const child = spawn(process.execPath, daemonArgs, {
     detached: true,
     stdio: "ignore",
     env: { ...process.env },
@@ -99,5 +109,7 @@ export async function ensureDaemon(
   }
 
   s?.stop("Daemon failed to start");
-  throw new Error("Daemon failed to start. Run `duck doctor` for diagnostics.");
+  throw new Error(
+    "Daemon failed to start. Run `rubber-duck doctor` for diagnostics."
+  );
 }

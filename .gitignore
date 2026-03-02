@@ -22,3 +22,7 @@ installer/dmg-background.png
 
 # Secrets
 .env
+
+# CLI binary artifacts
+cli-bin/
+RubberDuck/CLI/rubber-duck

@@ -3,6 +3,7 @@ import SwiftUI
 struct SetupChecklistView: View {
     @ObservedObject var audioManager: AudioManager
     @ObservedObject var configManager: AppConfigManager
+    @ObservedObject var cliInstaller: CLIInstaller = .shared
 
     @State private var pollTimer: Timer?
 
@@ -14,8 +15,13 @@ struct SetupChecklistView: View {
         audioManager.microphonePermissionState == .granted
     }
 
+    private var isCLIReady: Bool {
+        if case .notBundled = cliInstaller.status { return true } // skip in dev builds
+        return cliInstaller.isInstalled
+    }
+
     private var allStepsComplete: Bool {
-        isAPIKeySet && isMicrophoneGranted
+        isAPIKeySet && isMicrophoneGranted && isCLIReady
     }
 
     var body: some View {
@@ -47,6 +53,8 @@ struct SetupChecklistView: View {
             }
         }
 
+        cliInstallStep
+
         Divider()
 
         if allStepsComplete {
@@ -65,6 +73,27 @@ struct SetupChecklistView: View {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)
+    }
+
+    @ViewBuilder
+    private var cliInstallStep: some View {
+        switch cliInstaller.status {
+        case .notBundled:
+            EmptyView() // dev build without embed-cli — omit
+        case .installed:
+            Label("CLI tools installed", systemImage: "checkmark.circle.fill")
+        case .notInstalled, .stale:
+            Label("Install CLI tools", systemImage: "terminal")
+            Button("Install rubber-duck CLI") {
+                cliInstaller.install()
+            }
+            Text("Makes `rubber-duck` available in your terminal")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .error(let msg):
+            Label(msg, systemImage: "xmark.circle")
+                .foregroundStyle(.red)
+        }
     }
 
     // MARK: - Permission Polling

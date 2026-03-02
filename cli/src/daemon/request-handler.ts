@@ -171,7 +171,7 @@ export class RequestHandler {
         if (piSessionFile) {
           this.metadataStore.updateSession(session.id, { piSessionFile });
         }
-        if (piSessionName && session.name.startsWith("duck-")) {
+        if (piSessionName && session.name.startsWith("rubber-duck-")) {
           this.metadataStore.updateSession(session.id, { name: piSessionName });
           const updated = this.metadataStore.getSession(session.id);
           if (updated) {
@@ -236,7 +236,7 @@ export class RequestHandler {
         return {
           id: request.id,
           ok: false,
-          error: "No active session. Run `duck` first.",
+          error: "No active session. Run `rubber-duck` first.",
         };
       }
       sessionId = active.id;

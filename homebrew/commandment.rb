@@ -4,7 +4,7 @@ cask "rubber-duck" do
 
   url "https://github.com/mblode/rubber-duck/releases/download/v#{version}/RubberDuck-#{version}.dmg"
   name "Rubber Duck"
-  desc "macOS menu bar dictation app using OpenAI transcription"
+  desc "macOS menu bar voice coding agent"
   homepage "https://github.com/mblode/rubber-duck"
 
   depends_on macos: ">= :sequoia"
@@ -12,8 +12,14 @@ cask "rubber-duck" do
 
   app "Rubber Duck.app"
 
+  # Expose bundled CLI — same binary handles both modes via argv[0]
+  binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck"
+  binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck", target: "rubber-duck-daemon"
+
   zap trash: [
     "~/Library/Preferences/co.blode.rubber-duck.plist",
-    "~/Library/Application Support/co.blode.rubber-duck",
+    "~/Library/Application Support/RubberDuck",
+    "/usr/local/bin/rubber-duck",
+    "/usr/local/bin/rubber-duck-daemon",
   ]
 end

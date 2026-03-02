@@ -6,8 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "duck": "./dist/cli.js",
-    "duck-daemon": "./dist/daemon.js"
+    "rubber-duck": "./dist/cli.js",
+    "rubber-duck-daemon": "./dist/daemon.js"
   },
   "exports": {
     ".": {
@@ -23,6 +23,7 @@
   ],
   "scripts": {
     "build": "tsdown && node scripts/fix-shebang.mjs",
+    "build:binary": "npm run build && node scripts/build-binary.mjs",
     "dev": "tsdown --watch",
     "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
@@ -62,6 +63,8 @@
     "@biomejs/biome": "^2.4.0",
     "@changesets/cli": "^2.29.0",
     "@types/node": "^22.19.11",
+    "@yao-pkg/pkg": "^5.13.0",
+    "esbuild": "^0.24.0",
     "tsdown": "^0.12.0",
     "typescript": "^5.8.0",
     "ultracite": "^7.2.2",

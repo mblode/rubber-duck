@@ -20,6 +20,7 @@ struct SettingsView: View {
     @EnvironmentObject private var configManager: AppConfigManager
     @EnvironmentObject private var audioManager: AudioManager
     @EnvironmentObject private var updateManager: UpdateManager
+    @ObservedObject private var cliInstaller = CLIInstaller.shared
     @State private var apiKey: String = ""
     @State private var apiKeyError: String?
     @FocusState private var isAPIKeyFieldFocused: Bool
@@ -121,7 +122,28 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
 
+            if case .notBundled = cliInstaller.status {
+                EmptyView()
+            } else {
+                Section("CLI Tools") {
+                    HStack {
+                        cliStatusLabel
+                        Spacer()
+                        Button(cliInstaller.isInstalled ? "Reinstall" : "Install") {
+                            cliInstaller.install()
+                        }
+                    }
+                    if cliInstaller.isInstalled {
+                        Button("Uninstall", role: .destructive) {
+                            cliInstaller.uninstall()
+                        }
+                    }
+                    Text("Installs `rubber-duck` and `rubber-duck-daemon` commands to /usr/local/bin")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Section("Updates") {
@@ -159,7 +181,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 430, height: 400)
+        .frame(width: 430, height: 500)
         .onAppear {
             apiKey = configManager.getAPIKey() ?? ""
             apiKeyError = nil
@@ -191,6 +213,25 @@ struct SettingsView: View {
             }
         case .denied, .restricted:
             audioManager.openMicrophoneSettings()
+        }
+    }
+
+    @ViewBuilder
+    private var cliStatusLabel: some View {
+        switch cliInstaller.status {
+        case .notBundled:
+            Text("CLI not available in this build")
+                .foregroundStyle(.secondary)
+        case .notInstalled:
+            Label("rubber-duck not installed", systemImage: "terminal")
+        case .installed(let v):
+            Label("rubber-duck v\(v) installed", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .stale:
+            Label("Outdated — click Reinstall", systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+        case .error(let msg):
+            Text(msg).foregroundStyle(.red)
         }
     }
 

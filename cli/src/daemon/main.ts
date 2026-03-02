@@ -75,7 +75,7 @@ function loadDaemonConfig(): DaemonConfig {
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const argsVerbose = args.includes("--verbose");
 
@@ -178,10 +178,14 @@ async function main(): Promise<void> {
   process.stdin?.resume();
 }
 
-main().catch((err) => {
-  appendDaemonLog(
-    `Daemon failed to start: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
-  );
-  console.error("Daemon failed to start:", err);
-  process.exit(1);
-});
+// When imported by the standalone binary entry (cli-binary.ts), the caller
+// handles invocation directly to prevent double-start.
+if (process.env._RUBBER_DUCK_SKIP_AUTO_START !== "1") {
+  main().catch((err) => {
+    appendDaemonLog(
+      `Daemon failed to start: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`
+    );
+    console.error("Daemon failed to start:", err);
+    process.exit(1);
+  });
+}

@@ -96,7 +96,7 @@ export class DaemonClient {
         clearTimeout(timer);
         reject(
           new Error(
-            `Cannot connect to daemon: ${err.message}. Run \`duck\` to start.`
+            `Cannot connect to daemon: ${err.message}. Run \`rubber-duck\` to start.`
           )
         );
       });

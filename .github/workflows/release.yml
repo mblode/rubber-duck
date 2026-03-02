@@ -108,21 +108,46 @@ jobs:
           node dist/cli.js doctor > "$TMP_HOME/doctor.log" 2>&1
           set -e
 
-          if ! grep -q "duck doctor" "$TMP_HOME/doctor.log"; then
+          if ! grep -q "rubber-duck doctor" "$TMP_HOME/doctor.log"; then
             cat "$TMP_HOME/doctor.log"
-            echo "duck doctor output missing header"
+            echo "rubber-duck doctor output missing header"
             exit 1
           fi
 
           APP_DIR="$TMP_HOME/Library/Application Support/RubberDuck"
-          if [ -f "$APP_DIR/duck-daemon.pid" ]; then
-            DAEMON_PID="$(cat "$APP_DIR/duck-daemon.pid")"
+          if [ -f "$APP_DIR/rubber-duck-daemon.pid" ]; then
+            DAEMON_PID="$(cat "$APP_DIR/rubber-duck-daemon.pid")"
             kill "$DAEMON_PID" || true
           fi
 
+  cli-binary:
+    name: CLI Binary
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: cli/package-lock.json
+
+      - name: Install dependencies
+        run: cd cli && npm ci
+
+      - name: Build universal binary
+        run: make cli-binary
+
+      - name: Upload CLI binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rubber-duck-universal-binary
+          path: cli-bin/rubber-duck
+
   release:
     name: Release
-    needs: [build-and-test, cli-verify]
+    needs: [build-and-test, cli-verify, cli-binary]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: macos-15
     env:
@@ -147,6 +172,23 @@ jobs:
           xcodebuild -resolvePackageDependencies \
             -scheme Commandment \
             -derivedDataPath /tmp/rubber-duck-build
+
+      - name: Download CLI binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: rubber-duck-universal-binary
+          path: cli-bin/
+
+      - name: Stage CLI binary
+        run: |
+          chmod +x cli-bin/rubber-duck
+          mkdir -p RubberDuck/CLI
+          cp cli-bin/rubber-duck RubberDuck/CLI/rubber-duck
+
+      - name: Verify CLI binary
+        run: |
+          file cli-bin/rubber-duck
+          ./cli-bin/rubber-duck --version
 
       - name: Archive
         run: |
@@ -235,9 +277,11 @@ jobs:
 
             1. Download **RubberDuck-${{ steps.version.outputs.VERSION }}.dmg** below
             2. Open the DMG and drag Rubber Duck to Applications
-            3. Launch Rubber Duck from Applications
-            4. Click the microphone icon in the menu bar and enter your OpenAI API key in Settings
-            5. Grant microphone and accessibility permissions when prompted
+            3. Launch Rubber Duck — it will automatically install the `rubber-duck` CLI to `/usr/local/bin`
+            4. Enter your OpenAI API key in Settings
+            5. Grant microphone permissions when prompted
+
+            **CLI tools:** `rubber-duck [path]`, `rubber-duck say "..."`, `rubber-duck doctor`
 
             **Requires macOS 15.2 or later and an OpenAI API key.**
           files: /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
@@ -332,7 +376,7 @@ jobs:
 
             url "https://github.com/mblode/rubber-duck/releases/download/v#{version}/RubberDuck-#{version}.dmg"
             name "Rubber Duck"
-            desc "macOS menu bar dictation app using OpenAI transcription"
+            desc "macOS menu bar voice coding agent"
             homepage "https://github.com/mblode/rubber-duck"
 
             depends_on macos: ">= :sequoia"
@@ -340,9 +384,14 @@ jobs:
 
             app "Rubber Duck.app"
 
+            binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck"
+            binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck", target: "rubber-duck-daemon"
+
             zap trash: [
               "~/Library/Preferences/co.blode.rubber-duck.plist",
-              "~/Library/Application Support/co.blode.rubber-duck",
+              "~/Library/Application Support/RubberDuck",
+              "/usr/local/bin/rubber-duck",
+              "/usr/local/bin/rubber-duck-daemon",
             ]
           end
           EOF

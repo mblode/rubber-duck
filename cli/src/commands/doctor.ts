@@ -45,7 +45,7 @@ async function fetchDaemonChecks(checks: DoctorCheck[]): Promise<void> {
     checks.unshift({
       name: "daemon",
       status: "warn",
-      message: "Not running. Run `duck` to start.",
+      message: "Not running. Run `rubber-duck` to start.",
     });
   }
 }
@@ -55,7 +55,7 @@ export function registerDoctorCommand(program: Command): void {
     .command("doctor")
     .description("Check system health and dependencies")
     .action(async () => {
-      intro("duck doctor");
+      intro("rubber-duck doctor");
 
       const checks = runHealthChecks("client");
       await fetchDaemonChecks(checks);

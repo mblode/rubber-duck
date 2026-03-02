@@ -396,7 +396,6 @@ export interface DaemonEvent {
   sessionId: string;
 }
 
-
 export type DaemonMessage = DaemonResponse | DaemonEvent;
 
 export function isDaemonResponse(msg: DaemonMessage): msg is DaemonResponse {

@@ -66,11 +66,11 @@ export const SOCKET_PATH = resolveSocketPath();
 export const SESSIONS_DIR = join(APP_SUPPORT, "pi-sessions");
 export const METADATA_PATH = join(APP_SUPPORT, "metadata.json");
 export const CONFIG_PATH = join(APP_SUPPORT, "config.json");
-export const PID_PATH = join(APP_SUPPORT, "duck-daemon.pid");
-export const LOG_PATH = join(APP_SUPPORT, "duck-daemon.log");
+export const PID_PATH = join(APP_SUPPORT, "rubber-duck-daemon.pid");
+export const LOG_PATH = join(APP_SUPPORT, "rubber-duck-daemon.log");
 
 export const METADATA_VERSION = 1;
-export const DEFAULT_SESSION_PREFIX = "duck";
+export const DEFAULT_SESSION_PREFIX = "rubber-duck";
 export const PI_BINARY_OVERRIDE_ENV = "RUBBER_DUCK_PI_BINARY";
 export const PI_MODEL_OVERRIDE_ENV = "RUBBER_DUCK_PI_MODEL";
 export const PI_PROVIDER_OVERRIDE_ENV = "RUBBER_DUCK_PI_PROVIDER";
@@ -83,16 +83,20 @@ function resolvePiBinary(): string {
     return override;
   }
 
-  const moduleDir = dirname(fileURLToPath(import.meta.url));
-  const packageRoot = join(moduleDir, "..");
-  const localPiBinary = join(
-    packageRoot,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "pi.cmd" : "pi"
-  );
-  if (existsSync(localPiBinary)) {
-    return localPiBinary;
+  try {
+    const moduleDir = dirname(fileURLToPath(import.meta.url));
+    const packageRoot = join(moduleDir, "..");
+    const localPiBinary = join(
+      packageRoot,
+      "node_modules",
+      ".bin",
+      process.platform === "win32" ? "pi.cmd" : "pi"
+    );
+    if (existsSync(localPiBinary)) {
+      return localPiBinary;
+    }
+  } catch {
+    // import.meta.url unavailable in standalone binary — fall through to PATH
   }
 
   return "pi";

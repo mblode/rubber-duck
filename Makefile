@@ -13,7 +13,26 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 CODESIGN_IDENTITY ?= Developer ID Application
 TEAM_ID ?= $(APPLE_TEAM_ID)
 
-.PHONY: build test cli-build cli-test e2e-swift e2e-cli e2e-smoke e2e smoke-live archive export dmg-background dmg notarize clean unused
+.PHONY: build test cli-build cli-test cli-binary embed-cli embed-cli-optional e2e-swift e2e-cli e2e-smoke e2e smoke-live archive export dmg-background dmg notarize clean unused
+
+CLI_BIN_DIR = cli-bin
+CLI_BINARY  = $(CLI_BIN_DIR)/rubber-duck
+
+cli-binary: ## Build standalone rubber-duck universal binary (requires Node 22)
+	cd cli && npm ci && npm run build:binary
+
+embed-cli: ## Copy CLI binary into Xcode staging area (requires make cli-binary first)
+	@test -f $(CLI_BINARY) || (echo "ERROR: Run 'make cli-binary' first" && exit 1)
+	mkdir -p RubberDuck/CLI
+	cp $(CLI_BINARY) RubberDuck/CLI/rubber-duck
+
+embed-cli-optional: ## Embed CLI if already built, skip silently otherwise
+	@if [ -f $(CLI_BINARY) ]; then \
+		mkdir -p RubberDuck/CLI && cp $(CLI_BINARY) RubberDuck/CLI/rubber-duck; \
+		echo "Embedded: RubberDuck/CLI/rubber-duck"; \
+	else \
+		echo "Skipping CLI embed (run 'make cli-binary' to include)"; \
+	fi
 
 build:
 	xcodebuild -scheme $(SCHEME) \
