@@ -109,7 +109,5 @@ export async function ensureDaemon(
   }
 
   s?.stop("Daemon failed to start");
-  throw new Error(
-    "Daemon failed to start. Run `duck doctor` for diagnostics."
-  );
+  throw new Error("Daemon failed to start. Run `duck doctor` for diagnostics.");
 }
