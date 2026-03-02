@@ -17,6 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Clear stale SPM artifact cache
+        run: rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts/
+
+      - name: Resolve SPM dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme Commandment \
+            -derivedDataPath /tmp/rubber-duck-build
+
       - name: Preflight shared scheme
         run: |
           set -euo pipefail
@@ -26,12 +35,6 @@ jobs:
             xcodebuild -list -project RubberDuck.xcodeproj
             exit 1
           fi
-
-      - name: Resolve SPM dependencies
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -scheme Commandment \
-            -derivedDataPath /tmp/rubber-duck-build
 
       - name: Extract version from tag
         id: ci-version
@@ -169,6 +172,9 @@ jobs:
         with:
           p12-file-base64: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
           p12-password: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+
+      - name: Clear stale SPM artifact cache
+        run: rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts/
 
       - name: Resolve SPM dependencies
         run: |
