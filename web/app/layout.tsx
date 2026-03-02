@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   description:
     "Voice commands, file tools, AI coding sessions. One hotkey instead of switching between apps.",
   metadataBase: new URL("https://rubber-duck.blode.co"),
+  appleWebApp: {
+    title: "Rubber Duck",
+  },
 };
 
 export default function RootLayout({
