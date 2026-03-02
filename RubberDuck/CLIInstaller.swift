@@ -94,6 +94,8 @@ final class CLIInstaller: ObservableObject {
         for link in [cliLink, daemonLink] {
             try? FileManager.default.removeItem(at: link)
         }
+        try? FileManager.default.removeItem(at: installedBinaryURL)
+        try? FileManager.default.removeItem(at: versionFileURL)
         refresh()
     }
 
