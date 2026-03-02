@@ -8,19 +8,19 @@
     <description>Rubber Duck updates</description>
     <language>en</language>
     <item>
-      <title>Version 0.1.13</title>
-      <pubDate>Mon, 02 Mar 2026 05:43:16 +0000</pubDate>
-      <link>https://github.com/mblode/rubber-duck/releases/tag/v0.1.13</link>
-      <sparkle:version>0.1.13</sparkle:version>
-      <sparkle:shortVersionString>0.1.13</sparkle:shortVersionString>
+      <title>Version 0.1.14</title>
+      <pubDate>Mon, 02 Mar 2026 06:20:43 +0000</pubDate>
+      <link>https://github.com/mblode/rubber-duck/releases/tag/v0.1.14</link>
+      <sparkle:version>0.1.14</sparkle:version>
+      <sparkle:shortVersionString>0.1.14</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>15.2</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/mblode/rubber-duck/releases/download/v0.1.13/RubberDuck-0.1.13.dmg"
-        sparkle:version="0.1.13"
-        sparkle:shortVersionString="0.1.13"
-        sparkle:edSignature="QR2W60cINuXewud6GLKALLD0WHWJZCv1UQ5mhghigaMA06gcof8BzSw6pElg2YepAiriZa81lsdETQO1dnyrCg=="
+        url="https://github.com/mblode/rubber-duck/releases/download/v0.1.14/RubberDuck-0.1.14.dmg"
+        sparkle:version="0.1.14"
+        sparkle:shortVersionString="0.1.14"
+        sparkle:edSignature="KRwoG1OX00qXRCfTKZp0VKNAhEJZJZMkHC9MyzthUIs4PWGZ7r2kSvf/i/D8FUR7Fyyg//eflYFflwgQrDXBBg=="
         type="application/octet-stream"
-        length="25010481" />
+        length="5178286" />
     </item>
   </channel>
 </rss>
