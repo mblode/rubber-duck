@@ -42,9 +42,7 @@ await build({
 console.log("  → dist/cli.cjs");
 
 // Step 2: pkg creates a native standalone binary.
-console.log(
-  `Step 2: pkg → cli-bin/rubber-duck (node22-macos-${nativeArch})`
-);
+console.log(`Step 2: pkg → cli-bin/rubber-duck (node22-macos-${nativeArch})`);
 execSync(
   `npx pkg dist/cli.cjs --target node22-macos-${nativeArch} --output ${OUT_DIR}/rubber-duck`,
   { stdio: "inherit" }

@@ -194,7 +194,7 @@
 				CLIBUILD0000001 /* rubber-duck in Embed CLI */,
 			);
 			name = "Embed CLI Binaries";
-			runOnlyForDeploymentPostprocessing = 0;
+			runOnlyForDeploymentPostprocessing = 1;
 		};
 /* End PBXCopyFilesBuildPhase section */
 
