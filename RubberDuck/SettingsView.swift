@@ -141,7 +141,7 @@ struct SettingsView: View {
                         cliInstaller.uninstall()
                     }
                 }
-                Text("Downloads `rubber-duck` to ~/Library/Application Support and symlinks to /usr/local/bin")
+                Text("Downloads `duck` to ~/Library/Application Support and symlinks to /usr/local/bin")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -220,12 +220,12 @@ struct SettingsView: View {
     private var cliStatusLabel: some View {
         switch cliInstaller.status {
         case .notInstalled:
-            Label("rubber-duck not installed", systemImage: "terminal")
+            Label("duck not installed", systemImage: "terminal")
         case .downloading:
-            Label("Downloading rubber-duck...", systemImage: "arrow.down.circle")
+            Label("Downloading duck...", systemImage: "arrow.down.circle")
                 .foregroundStyle(.secondary)
         case .installed(let v):
-            Label("rubber-duck v\(v) installed", systemImage: "checkmark.circle.fill")
+            Label("duck v\(v) installed", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
         case .updateAvailable(let installed, let new):
             Label("Update available: v\(installed) → v\(new)", systemImage: "arrow.up.circle")

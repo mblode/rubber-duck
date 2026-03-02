@@ -1,49 +1,55 @@
 <p align="center">
-  <img src="rubber-duck-macOS-Default-1024x1024@1x.png" width="128" alt="Rubber Duck app icon">
+  <img src="icon.png" width="128" alt="Rubber Duck app icon">
 </p>
 
 <h1 align="center">Rubber Duck</h1>
 
 <p align="center">
-  Open-source voice coding companion for macOS. Bring your own OpenAI API key.
+  A voice agent in the macOS menu bar. Hold <code>Option+D</code>, speak to your codebase,
+  and hear the answer spoken back — while every file read, edit, and command
+  scrolls through your terminal.
 </p>
 
-## How it works
+<p align="center">
+  BYO OpenAI API key. No subscription. No editor dependency. <a href="LICENSE.md">MIT license</a>.
+</p>
 
-- Hold a hotkey, speak to your codebase, and hear answers spoken back in real time
-- Interrupt the assistant mid-sentence — it stops immediately (barge-in)
-- Every tool call, diff, and command output scrolls through your terminal via the `duck` CLI
-- Two pieces work together: **Rubber Duck.app** (menu bar — mic, speaker, session manager) and the **`duck` CLI** (attach a repo, follow live streams, send typed messages)
-- API key stays in macOS Keychain — no middleman
+## What it does
+
+Hold `Option+D` and speak. The agent:
+
+- Reads files you mention or searches for them
+- Edits code and explains what changed
+- Runs bash commands in your workspace
+- Searches definitions, usages, and patterns with grep
+- Speaks the answer back — summarising rather than reading files verbatim
+
+Interrupt at any time. The agent stops immediately (barge-in).
+
+Every step appears in your terminal via `duck [path]`. Nothing is hidden.
 
 Default shortcuts: `Option+D` to activate voice, `Option+Shift+D` to open Settings.
 
 ## Install
 
-Requires an [OpenAI API key](https://platform.openai.com/api-keys) and macOS 15.2+.
-
-**[Download the latest release](https://github.com/mblode/rubber-duck/releases/latest)**, or:
+Requires macOS 15.2+ and an [OpenAI API key](https://platform.openai.com/api-keys).
 
 ```bash
 brew tap mblode/tap
 brew install --cask rubber-duck
 ```
 
-### CLI
+Or [download the latest DMG](https://github.com/mblode/rubber-duck/releases/latest) directly.
 
-```bash
-npm install -g rubber-duck
-```
-
-Requires Node.js 22+.
+The `duck` CLI is installed automatically on first launch.
 
 ## Usage
 
 ```bash
-# Attach a workspace and stream events
+# Attach a workspace and stream all events
 duck ~/projects/myapp
 
-# Send a typed message
+# Send a typed message to the active session
 duck say "refactor the auth middleware to use async/await"
 
 # List sessions
@@ -61,7 +67,7 @@ duck doctor
 ## Troubleshooting
 
 - If the menu bar icon is hidden (common with menu bar overflow apps), press `Option+Shift+D` to open Settings directly
-- If `duck` commands hang, run `duck doctor` to check daemon health or restart it with `pkill -f duck-daemon`
+- If `duck` commands hang, run `duck doctor` to check daemon health or restart with `pkill -f duck-daemon`
 
 ## License
 

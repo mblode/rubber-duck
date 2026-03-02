@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Builds standalone rubber-duck binaries using esbuild (ESM→CJS) + @yao-pkg/pkg.
+// Builds standalone duck binaries using esbuild (ESM→CJS) + @yao-pkg/pkg.
 //
 // Produces two arch-specific binaries (arm64 + x64) for distribution as separate
 // GitHub release assets. The app downloads the matching arch on first launch rather
@@ -46,19 +46,19 @@ console.log("  → dist/cli.cjs");
 // Step 2: pkg creates arch-specific standalone binaries.
 for (const arch of ["arm64", "x64"]) {
   console.log(
-    `Step 2 (${arch}): pkg → cli-bin/rubber-duck-${arch} (node22-macos-${arch})`
+    `Step 2 (${arch}): pkg → cli-bin/duck-${arch} (node22-macos-${arch})`
   );
   execSync(
-    `npx pkg dist/cli.cjs --target node22-macos-${arch} --output ${OUT_DIR}/rubber-duck-${arch}`,
+    `npx pkg dist/cli.cjs --target node22-macos-${arch} --output ${OUT_DIR}/duck-${arch}`,
     { stdio: "inherit" }
   );
-  execSync(`chmod +x ${OUT_DIR}/rubber-duck-${arch}`, { stdio: "inherit" });
-  console.log(`Binary (${arch}): ${OUT_DIR}/rubber-duck-${arch}`);
+  execSync(`chmod +x ${OUT_DIR}/duck-${arch}`, { stdio: "inherit" });
+  console.log(`Binary (${arch}): ${OUT_DIR}/duck-${arch}`);
 }
 
-// Convenience copy of native arch for local testing (e.g. rubber-duck doctor).
-execSync(`cp ${OUT_DIR}/rubber-duck-${nativeArch} ${OUT_DIR}/rubber-duck`, {
+// Convenience copy of native arch for local testing (e.g. duck doctor).
+execSync(`cp ${OUT_DIR}/duck-${nativeArch} ${OUT_DIR}/duck`, {
   stdio: "inherit",
 });
-execSync(`chmod +x ${OUT_DIR}/rubber-duck`, { stdio: "inherit" });
-console.log(`Native copy: ${OUT_DIR}/rubber-duck (${nativeArch})`);
+execSync(`chmod +x ${OUT_DIR}/duck`, { stdio: "inherit" });
+console.log(`Native copy: ${OUT_DIR}/duck (${nativeArch})`);

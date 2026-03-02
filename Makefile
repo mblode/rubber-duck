@@ -17,7 +17,7 @@ TEAM_ID ?= $(APPLE_TEAM_ID)
 
 CLI_BIN_DIR = cli-bin
 
-cli-binary: ## Build standalone rubber-duck binaries (arm64 + x64) for distribution (requires Node 22)
+cli-binary: ## Build standalone duck binaries (arm64 + x64) for distribution (requires Node 22)
 	cd cli && npm ci && npm run build:binary
 
 build:

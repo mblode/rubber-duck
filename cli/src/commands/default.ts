@@ -31,7 +31,7 @@ export function registerDefaultAction(program: Command): void {
           !existsSync(resolveWorkspacePath(pathArg))
         ) {
           log.warn(
-            `\`${pathArg}\` was removed. Use \`rubber-duck\` to attach+stream and \`rubber-duck say ...\` to send prompts.`
+            `\`${pathArg}\` was removed. Use \`duck\` to attach+stream and \`duck say ...\` to send prompts.`
           );
           process.exit(1);
         }

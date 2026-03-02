@@ -4,8 +4,8 @@
 
 const invokedAs = process.argv[1] ?? "";
 const isBinaryDaemonMode =
-  invokedAs.endsWith("rubber-duck-daemon") ||
-  process.argv[0]?.endsWith("rubber-duck-daemon") ||
+  invokedAs.endsWith("duck-daemon") ||
+  process.argv[0]?.endsWith("duck-daemon") ||
   process.argv[2] === "--daemon";
 
 if (isBinaryDaemonMode) {
@@ -31,7 +31,7 @@ if (isBinaryDaemonMode) {
 
     const program = new Command();
     program
-      .name("rubber-duck")
+      .name("duck")
       .description("Voice-first coding companion CLI")
       .version("0.0.1");
 

@@ -84,10 +84,10 @@ struct SetupChecklistView: View {
                 .foregroundStyle(.secondary)
         case .notInstalled:
             Label("Install CLI tools", systemImage: "terminal")
-            Button("Download rubber-duck CLI") {
+            Button("Download duck CLI") {
                 Task { await cliInstaller.install() }
             }
-            Text("Makes `rubber-duck` available in your terminal")
+            Text("Makes `duck` available in your terminal")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .error(let msg):

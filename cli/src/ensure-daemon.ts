@@ -69,7 +69,7 @@ export async function ensureDaemon(
   const s = quiet ? null : spinner();
   s?.start("Starting daemon...");
 
-  // In a standalone pkg binary, process.execPath is the rubber-duck binary itself.
+  // In a standalone pkg binary, process.execPath is the duck binary itself.
   // Spawn it with --daemon to start the daemon process.
   // In normal npm installation, spawn node with the daemon.js path.
   const isPackaged =
@@ -110,6 +110,6 @@ export async function ensureDaemon(
 
   s?.stop("Daemon failed to start");
   throw new Error(
-    "Daemon failed to start. Run `rubber-duck doctor` for diagnostics."
+    "Daemon failed to start. Run `duck doctor` for diagnostics."
   );
 }

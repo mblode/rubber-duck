@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Rubber Duck — Voice coding agent for macOS",
   description:
-    "Voice commands, file tools, AI coding sessions. One hotkey instead of switching between apps.",
+    "A voice agent in your macOS menu bar. Speak to your codebase — it reads files, edits code, and runs commands. Your API key, your terminal, your rules.",
   metadataBase: new URL("https://rubber-duck.blode.co"),
   appleWebApp: {
     title: "Rubber Duck",

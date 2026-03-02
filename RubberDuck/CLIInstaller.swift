@@ -1,10 +1,10 @@
 import Foundation
 
-/// Downloads and manages the `rubber-duck` CLI binary in Application Support.
+/// Downloads and manages the `duck` CLI binary in Application Support.
 ///
 /// On first launch the app downloads the matching arch binary from GitHub Releases
-/// into ~/Library/Application Support/RubberDuck/rubber-duck, then symlinks
-/// /usr/local/bin/rubber-duck and /usr/local/bin/rubber-duck-daemon to it.
+/// into ~/Library/Application Support/RubberDuck/duck, then symlinks
+/// /usr/local/bin/duck and /usr/local/bin/duck-daemon to it.
 /// On subsequent app updates, a version mismatch triggers an auto-redownload.
 @MainActor
 final class CLIInstaller: ObservableObject {
@@ -22,14 +22,14 @@ final class CLIInstaller: ObservableObject {
     @Published private(set) var status: Status = .notInstalled
 
     private let binDir      = URL(fileURLWithPath: "/usr/local/bin")
-    private var cliLink:    URL { binDir.appendingPathComponent("rubber-duck") }
-    private var daemonLink: URL { binDir.appendingPathComponent("rubber-duck-daemon") }
+    private var cliLink:    URL { binDir.appendingPathComponent("duck") }
+    private var daemonLink: URL { binDir.appendingPathComponent("duck-daemon") }
 
     private var installedBinaryURL: URL {
-        AppSupportPaths.rootURL().appendingPathComponent("rubber-duck")
+        AppSupportPaths.rootURL().appendingPathComponent("duck")
     }
     private var versionFileURL: URL {
-        AppSupportPaths.rootURL().appendingPathComponent("rubber-duck.version")
+        AppSupportPaths.rootURL().appendingPathComponent("duck.version")
     }
 
     private init() { refresh() }
@@ -56,9 +56,9 @@ final class CLIInstaller: ObservableObject {
     func install() async {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         #if arch(arm64)
-        let assetName = "rubber-duck-\(appVersion)-macos-arm64"
+        let assetName = "duck-\(appVersion)-macos-arm64"
         #else
-        let assetName = "rubber-duck-\(appVersion)-macos-x64"
+        let assetName = "duck-\(appVersion)-macos-x64"
         #endif
         guard let downloadURL = URL(string:
             "https://github.com/mblode/rubber-duck/releases/download/v\(appVersion)/\(assetName)")
@@ -83,7 +83,7 @@ final class CLIInstaller: ObservableObject {
             if let err = createSymlinks() {
                 logInfo("CLIInstaller: symlink: \(err)")
             }
-            logInfo("CLIInstaller: installed rubber-duck v\(appVersion)")
+            logInfo("CLIInstaller: installed duck v\(appVersion)")
             refresh()
         } catch {
             status = .error("Download failed: \(error.localizedDescription)")
@@ -128,7 +128,7 @@ final class CLIInstaller: ObservableObject {
             }
         }
         guard fm.isWritableFile(atPath: binDir.path) else {
-            return "/usr/local/bin is not writable. Run manually:\nln -sfn \"\(installedBinaryURL.path)\" /usr/local/bin/rubber-duck"
+            return "/usr/local/bin is not writable. Run manually:\nln -sfn \"\(installedBinaryURL.path)\" /usr/local/bin/duck"
         }
         for link in [cliLink, daemonLink] {
             try? fm.removeItem(at: link)

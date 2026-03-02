@@ -97,7 +97,7 @@ enum AppComposer {
 
         scheduleFirstLaunchSettingsRevealIfNeeded(configManager: transcription)
 
-        // Auto-install/update rubber-duck CLI on first launch or after app update
+        // Auto-install/update duck CLI on first launch or after app update
         Task { @MainActor in
             guard !AppEnvironment.isRunningTests else { return }
             let installer = CLIInstaller.shared

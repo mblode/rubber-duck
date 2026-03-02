@@ -51,7 +51,7 @@ export function registerSessionsCommand(program: Command): void {
         }
 
         if (sessions.length === 0) {
-          log.info("No sessions yet. Run `rubber-duck` to start.");
+          log.info("No sessions yet. Run `duck` to start.");
           client.close();
           return;
         }

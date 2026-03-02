@@ -90,7 +90,7 @@ enum AppSupportPaths {
         let digest = SHA256.hash(data: Data(root.path.utf8))
         let suffix = digest.prefix(6).map { String(format: "%02x", $0) }.joined()
         let fallbackPath = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("rubber-duck-\(suffix).sock", isDirectory: false)
+            .appendingPathComponent("duck-\(suffix).sock", isDirectory: false)
             .path
         return URL(fileURLWithPath: fallbackPath, isDirectory: false)
     }

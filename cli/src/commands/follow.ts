@@ -182,7 +182,7 @@ function printSessionHeader(
     `${colorize("bold", sessionName)}  ${colorize("dim", shortPath)}  ${modelInfo}`
   );
   if (!isRunning) {
-    log.warn("Session is idle — run `rubber-duck say …` to start");
+    log.warn("Session is idle — run `duck say …` to start");
   }
   if (verbose && appHistoryFile) {
     const historyStatus = appHistoryExists

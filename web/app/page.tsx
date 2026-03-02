@@ -57,13 +57,13 @@ export default async function HomePage() {
         </h1>
 
         <p className="text-[17px] font-medium text-[#c5c5ca] mt-2.5">
-          Your voice coding agent, in the menu bar.
+          Your rubber duck, upgraded.
         </p>
 
         <p className="text-[14px] font-light leading-[1.7] text-[#98989d] mt-5">
-          Voice commands, file tools, AI coding sessions.
+          Hold Option+D. Speak to your codebase. The agent reads files,
           <br />
-          One hotkey instead of switching between apps.
+          edits code, and runs commands — then talks back. Any editor. Your API key.
         </p>
 
         <div className="inline-flex items-center gap-[14px] mt-7">
@@ -89,10 +89,7 @@ export default async function HomePage() {
         </div>
 
         <span className="text-[12px] text-[#636366] mt-3">
-          <span className="inline-block text-[9px] font-medium text-[#8e8e93] bg-white/[.06] rounded-full px-[7px] py-[2px] tracking-[.06em] uppercase mr-1.5 relative top-[-0.5px]">
-            Beta
-          </span>
-          {version} · Requires macOS Tahoe
+          {version} · macOS 15.2+ · OpenAI API key required
         </span>
       </div>
 

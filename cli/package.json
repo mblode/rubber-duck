@@ -1,13 +1,13 @@
 {
-  "name": "rubber-duck",
+  "name": "duck",
   "version": "0.0.1",
   "description": "Voice-first coding companion CLI — attach repos, follow sessions, talk to your code",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "rubber-duck": "./dist/cli.js",
-    "rubber-duck-daemon": "./dist/daemon.js"
+    "duck": "./dist/cli.js",
+    "duck-daemon": "./dist/daemon.js"
   },
   "exports": {
     ".": {

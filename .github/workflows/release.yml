@@ -108,15 +108,15 @@ jobs:
           node dist/cli.js doctor > "$TMP_HOME/doctor.log" 2>&1
           set -e
 
-          if ! grep -q "rubber-duck doctor" "$TMP_HOME/doctor.log"; then
+          if ! grep -q "duck doctor" "$TMP_HOME/doctor.log"; then
             cat "$TMP_HOME/doctor.log"
-            echo "rubber-duck doctor output missing header"
+            echo "duck doctor output missing header"
             exit 1
           fi
 
           APP_DIR="$TMP_HOME/Library/Application Support/RubberDuck"
-          if [ -f "$APP_DIR/rubber-duck-daemon.pid" ]; then
-            DAEMON_PID="$(cat "$APP_DIR/rubber-duck-daemon.pid")"
+          if [ -f "$APP_DIR/duck-daemon.pid" ]; then
+            DAEMON_PID="$(cat "$APP_DIR/duck-daemon.pid")"
             kill "$DAEMON_PID" || true
           fi
 
@@ -142,10 +142,10 @@ jobs:
       - name: Upload CLI binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rubber-duck-binaries
+          name: duck-binaries
           path: |
-            cli-bin/rubber-duck-arm64
-            cli-bin/rubber-duck-x64
+            cli-bin/duck-arm64
+            cli-bin/duck-x64
           retention-days: 1
 
   release:
@@ -179,19 +179,19 @@ jobs:
       - name: Download CLI binaries
         uses: actions/download-artifact@v4
         with:
-          name: rubber-duck-binaries
+          name: duck-binaries
           path: cli-bin/
 
       - name: Prepare CLI release assets
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          chmod +x cli-bin/rubber-duck-arm64 cli-bin/rubber-duck-x64
-          mv cli-bin/rubber-duck-arm64 "cli-bin/rubber-duck-${VERSION}-macos-arm64"
-          mv cli-bin/rubber-duck-x64 "cli-bin/rubber-duck-${VERSION}-macos-x64"
-          echo "CLI_ARM64=cli-bin/rubber-duck-${VERSION}-macos-arm64" >> $GITHUB_ENV
-          echo "CLI_X64=cli-bin/rubber-duck-${VERSION}-macos-x64" >> $GITHUB_ENV
-          file "cli-bin/rubber-duck-${VERSION}-macos-arm64"
-          file "cli-bin/rubber-duck-${VERSION}-macos-x64"
+          chmod +x cli-bin/duck-arm64 cli-bin/duck-x64
+          mv cli-bin/duck-arm64 "cli-bin/duck-${VERSION}-macos-arm64"
+          mv cli-bin/duck-x64 "cli-bin/duck-${VERSION}-macos-x64"
+          echo "CLI_ARM64=cli-bin/duck-${VERSION}-macos-arm64" >> $GITHUB_ENV
+          echo "CLI_X64=cli-bin/duck-${VERSION}-macos-x64" >> $GITHUB_ENV
+          file "cli-bin/duck-${VERSION}-macos-arm64"
+          file "cli-bin/duck-${VERSION}-macos-x64"
 
       - name: Archive
         run: |
@@ -280,11 +280,11 @@ jobs:
 
             1. Download **RubberDuck-${{ steps.version.outputs.VERSION }}.dmg** below
             2. Open the DMG and drag Rubber Duck to Applications
-            3. Launch Rubber Duck — it automatically downloads and installs the `rubber-duck` CLI
+            3. Launch Rubber Duck — it automatically downloads and installs the `duck` CLI
             4. Enter your OpenAI API key in Settings
             5. Grant microphone permissions when prompted
 
-            **CLI tools:** `rubber-duck [path]`, `rubber-duck say "..."`, `rubber-duck doctor`
+            **CLI tools:** `duck [path]`, `duck say "..."`, `duck doctor`
 
             **Requires macOS 15.2 or later and an OpenAI API key.**
 
@@ -293,14 +293,14 @@ jobs:
             ### Standalone CLI binaries
 
             For direct CLI installation without the app, download the binary for your architecture:
-            - **Apple Silicon (M1/M2/M3/M4):** `rubber-duck-${{ steps.version.outputs.VERSION }}-macos-arm64`
-            - **Intel Mac:** `rubber-duck-${{ steps.version.outputs.VERSION }}-macos-x64`
+            - **Apple Silicon (M1/M2/M3/M4):** `duck-${{ steps.version.outputs.VERSION }}-macos-arm64`
+            - **Intel Mac:** `duck-${{ steps.version.outputs.VERSION }}-macos-x64`
 
             ```bash
             # Apple Silicon
-            curl -L -o /usr/local/bin/rubber-duck \
-              https://github.com/mblode/rubber-duck/releases/download/v${{ steps.version.outputs.VERSION }}/rubber-duck-${{ steps.version.outputs.VERSION }}-macos-arm64
-            chmod +x /usr/local/bin/rubber-duck
+            curl -L -o /usr/local/bin/duck \
+              https://github.com/mblode/rubber-duck/releases/download/v${{ steps.version.outputs.VERSION }}/duck-${{ steps.version.outputs.VERSION }}-macos-arm64
+            chmod +x /usr/local/bin/duck
             ```
           files: |
             /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
@@ -408,8 +408,8 @@ jobs:
             zap trash: [
               "~/Library/Preferences/co.blode.rubber-duck.plist",
               "~/Library/Application Support/RubberDuck",
-              "/usr/local/bin/rubber-duck",
-              "/usr/local/bin/rubber-duck-daemon",
+              "/usr/local/bin/duck",
+              "/usr/local/bin/duck-daemon",
             ]
           end
           EOF

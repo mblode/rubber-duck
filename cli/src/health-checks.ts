@@ -169,7 +169,7 @@ function addSocketCheck(
   checks.push({
     name: "socket",
     status: "warn",
-    message: "Socket not found. Run `rubber-duck` to start daemon.",
+    message: "Socket not found. Run `duck` to start daemon.",
   });
 }
 

@@ -14,12 +14,12 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 ### Rebuild Shortcuts
 
 - `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build && (pkill -x "Rubber Duck" || true) && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" && open "/Applications/Rubber Duck.app"` — Rebuild and replace the installed macOS app
-- `cd cli && npm run build && npm link && (pkill -f "rubber-duck-daemon|dist/daemon.js" || true)` — Rebuild/relink CLI and force daemon restart so `rubber-duck` uses latest code
+- `cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" || true)` — Rebuild/relink CLI and force daemon restart so `duck` uses latest code
 
 ### CLI Commands (`cli/`)
 
 - `cd cli && npm install` — Install CLI dependencies
-- `cd cli && npm run build` — Build `rubber-duck`, `rubber-duck-daemon`, and library exports
+- `cd cli && npm run build` — Build `duck`, `duck-daemon`, and library exports
 - `cd cli && npm run typecheck` — TypeScript checks
 - `cd cli && npm run lint` — Biome checks
 - `cd cli && npm run verify:ci` — Build + typecheck + lint + help smoke
@@ -29,7 +29,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 
 ### CLI Binary (standalone, no Node required)
 
-- `make cli-binary` — Build standalone `rubber-duck` binaries (arm64 + x64) via esbuild+pkg into `cli-bin/`; produces `rubber-duck-arm64`, `rubber-duck-x64`, and a native-arch copy `rubber-duck`
+- `make cli-binary` — Build standalone `duck` binaries (arm64 + x64) via esbuild+pkg into `cli-bin/`; produces `duck-arm64`, `duck-x64`, and a native-arch copy `duck`
 
 ### E2E Tests (require API keys)
 
@@ -55,15 +55,15 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - HotkeyManager is `@MainActor` — removing this will cause KeyboardShortcuts crashes on background threads
 - Settings changes propagate via `@EnvironmentObject` (`AppConfigManager`) — do not replace with NotificationCenter
 - Default global hotkeys are Option+D (activate voice agent) and Option+Shift+D (open Settings) — configured via KeyboardShortcuts in `HotkeyManager`
-- CLI uses a local daemon + Unix socket. Default socket path is `~/Library/Application Support/RubberDuck/daemon.sock`; if path length is too long, it falls back to `$TMPDIR/rubber-duck-<hash>.sock`.
-- CLI daemon runtime files: `~/Library/Application Support/RubberDuck/{metadata.json,config.json,rubber-duck-daemon.log,rubber-duck-daemon.pid,pi-sessions/}`.
+- CLI uses a local daemon + Unix socket. Default socket path is `~/Library/Application Support/RubberDuck/daemon.sock`; if path length is too long, it falls back to `$TMPDIR/duck-<hash>.sock`.
+- CLI daemon runtime files: `~/Library/Application Support/RubberDuck/{metadata.json,config.json,duck-daemon.log,duck-daemon.pid,pi-sessions/}`.
 - CLI `follow` and `say` automatically handle Pi `extension_ui_request` events via `@clack/prompts` and send `extension_ui_response` back through the daemon.
 - CLI daemon defaults to `gpt-4o-mini` when `OPENAI_API_KEY` is set. Override with `RUBBER_DUCK_PI_MODEL` env var. Thinking defaults to `off` for speed; override with `RUBBER_DUCK_PI_THINKING`.
 - Swift app connects to `daemon.sock` via `DaemonSocketClient` (Network.framework NWConnection, `@MainActor`). If daemon absent the app runs normally — voice tools return an error, workspace switching falls back to 2s polling.
 - Voice tool calls (`read_file`, `write_file`, `edit_file`, `bash`, `grep_search`, `find_files`) are executed by `cli/src/daemon/voice-tools.ts` via the `voice_tool_call` daemon method. Swift no longer implements these tools locally.
-- Workspace switching from `rubber-duck [path]` → Swift menu bar is instant via `voice_session_changed` daemon push (no polling delay when daemon is running).
-- CLI binary is **not bundled** in the app. On first launch `CLIInstaller` downloads the matching-version binary from GitHub Releases (`rubber-duck-{version}-macos-{arm64|x64}`) to `~/Library/Application Support/RubberDuck/rubber-duck`, strips quarantine, and symlinks to `/usr/local/bin`. On app update the version mismatch triggers an auto-redownload.
-- The standalone `rubber-duck` binary acts as both CLI and daemon — daemon mode is activated when `argv[0]` ends in `rubber-duck-daemon` (via symlink) or `--daemon` flag is passed.
+- Workspace switching from `duck [path]` → Swift menu bar is instant via `voice_session_changed` daemon push (no polling delay when daemon is running).
+- CLI binary is **not bundled** in the app. On first launch `CLIInstaller` downloads the matching-version binary from GitHub Releases (`duck-{version}-macos-{arm64|x64}`) to `~/Library/Application Support/RubberDuck/duck`, strips quarantine, and symlinks to `/usr/local/bin`. On app update the version mismatch triggers an auto-redownload.
+- The standalone `duck` binary acts as both CLI and daemon — daemon mode is activated when `argv[0]` ends in `duck-daemon` (via symlink) or `--daemon` flag is passed.
 
 ## Conventions
 
@@ -75,7 +75,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 
 - `make build` — Release build
 - `make cli-build` — Build CLI (TypeScript → dist/)
-- `make cli-binary` — Build standalone arm64 + x64 binaries (esbuild CJS bundle + pkg); outputs `cli-bin/rubber-duck-{arm64,x64}`
+- `make cli-binary` — Build standalone arm64 + x64 binaries (esbuild CJS bundle + pkg); outputs `cli-bin/duck-{arm64,x64}`
 - `make cli-test` — Run CLI tests (passes when no tests are present)
 - `make dmg` — Build + create DMG (requires `brew install create-dmg`)
 - `make notarize` — Build + DMG + notarize (requires Apple Developer credentials in env)
