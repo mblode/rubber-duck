@@ -11,7 +11,7 @@ interface StreamLifecycleOptions {
   unfollowOnCleanup?: boolean;
 }
 
-export interface StreamLifecycle {
+interface StreamLifecycle {
   /** Trigger a graceful shutdown (idempotent). */
   cleanup: () => void;
 }

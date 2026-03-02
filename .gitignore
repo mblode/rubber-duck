@@ -17,6 +17,8 @@ Packages/
 /tmp/rubber-duck-build/
 *.dmg
 installer/dmg-background.png
+*.profraw
+*.profdata
 
 # Secrets
 .env

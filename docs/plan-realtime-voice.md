@@ -1,1 +1,0 @@
-/Users/mblode/.claude/plans/joyful-wondering-dream.md

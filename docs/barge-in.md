@@ -1,38 +1,3 @@
-~/Downloads/test on ☁️
-❯ duck
-│
-◇
-│
-◇ duck-1 ~/Downloads/test [gpt-4o-mini · thinking:off]
-
-│
-● Waiting for session activity...
-User: [voice message]
-User: Hey, can you tell me about this repo?
-Duck: Sure, I'll take a quick look at the files here to give you an overview. Please hold on.
-User: I'll take a quick look at the files here to give you an overview. Please hold on.
-[tool:voice] tool=find\*files call=call_1z5iiMCvhCMw2UGj args={"pattern": "\*\*/\_", "include_directories": true}
-[tool:voice] start tool=find_files
-[tool:voice] complete
-[tool:voice] tool=read_file call=call_bsrygrZ99OZpRZdY args={"path": "readme.md"}
-[tool:voice] start tool=read_file
-[tool:voice] complete
-[tool:voice] tool=read_file call=call_nd9GdRWUFOmvU4B7 args={"path":"TODO.md"}
-[tool:voice] start tool=read_file
-[tool:voice] complete
-Duck: This repo is very simple, it contains just two files: a readme that says "hello, world!" and a TODO file that says "Hello,
-User: It was very simple.
-Duck: The README says "hello, world!" and the TODO file says "Hello, world." That's all that's in here—no code or other resources.
-User: Ez alap
-Duck: Sure, there's nothing else to add—it's just those two files
-User: That's
-Duck: No problem—anything else you want to explore or modify in this repo?
-User: Nothing else to add, no cry.
-Duck: Alright, if you think of anything later, just let me know.
-User: [voice message]
-User: If you think of anything late...
-Duck: Sounds good. I'm here whenever you need help, just ask.
-
 gpt-realtime-1.5
 
 # Realtime Prompting Guide

@@ -5,26 +5,24 @@
 <h1 align="center">Rubber Duck</h1>
 
 <p align="center">
-  Open-source voice-first coding companion for macOS. Bring your own OpenAI API key.
+  Open-source voice coding companion for macOS. Bring your own OpenAI API key.
 </p>
 
-A [rubber duck debugger](docs/rubber-duck-debugging.md) that talks back. Speak to your codebase through a menu bar app, hear answers spoken back in real time, and watch every tool call, diff, and command output scroll through your terminal. Two pieces work together: **Rubber Duck.app** (menu bar — mic, speaker, session manager) and the **`duck` CLI** (attach a repo, follow live streams, send typed messages).
+## How it works
 
-## Features
+- Hold a hotkey, speak to your codebase, and hear answers spoken back in real time
+- Interrupt the assistant mid-sentence — it stops immediately (barge-in)
+- Every tool call, diff, and command output scrolls through your terminal via the `duck` CLI
+- Two pieces work together: **Rubber Duck.app** (menu bar — mic, speaker, session manager) and the **`duck` CLI** (attach a repo, follow live streams, send typed messages)
+- API key stays in macOS Keychain — no middleman
 
-- **Voice conversation:** Speech-to-speech via the OpenAI Realtime API over a single WebSocket connection.
-- **Coding tools:** Read files, edit code, run shell commands, grep, and find — all workspace-confined with a safe mode toggle.
-- **Barge-in:** Interrupt the assistant mid-sentence; it stops immediately.
-- **Multi-session:** Multiple conversations per repo, background runs, concurrent terminals.
-- **`duck` CLI:** Attach workspaces, follow live streams, and send typed messages from any terminal.
-- **Terminal transparency:** Every tool call, argument, output chunk, and file edit is visible in the CLI stream.
-- **Keychain storage:** Your OpenAI API key stays in macOS Keychain — no middleman.
+Default shortcuts: `Option+D` to activate voice, `Option+Shift+D` to open Settings.
 
 ## Install
 
 Requires an [OpenAI API key](https://platform.openai.com/api-keys) and macOS 15.2+.
 
-**[Download the latest release](https://github.com/mblode/rubber-duck/releases/latest)**, or install with Homebrew:
+**[Download the latest release](https://github.com/mblode/rubber-duck/releases/latest)**, or:
 
 ```bash
 brew tap mblode/tap
@@ -37,128 +35,33 @@ brew install --cask rubber-duck
 npm install -g rubber-duck
 ```
 
-Or link from source after cloning:
-
-```bash
-cd cli && npm install && npm run build && npm link
-```
-
 Requires Node.js 22+.
 
 ## Usage
 
-Default shortcuts: `Option+D` to activate voice, `Option+Shift+D` to open Settings.
-
-### Attach a workspace and stream events
-
 ```bash
+# Attach a workspace and stream events
 duck ~/projects/myapp
-```
 
-Attaches the directory as the active workspace and streams agent events to your terminal. If a session is already active, it resumes.
-
-### Send a typed message
-
-```bash
+# Send a typed message
 duck say "refactor the auth middleware to use async/await"
-```
 
-Sends the message to the active session and streams the full response.
-
-### List sessions
-
-```bash
+# List sessions
 duck sessions
-duck sessions --all
-```
 
-### Check system health
-
-```bash
+# Check system health
 duck doctor
 ```
 
-Reports daemon status, active session, Pi process health, and API key configuration.
-
-## Configuration
-
-**API key:** Open Settings (menu bar → Settings… or `Option+Shift+D`) and paste your OpenAI API key. It is stored in macOS Keychain.
-
-**Coding agent model:** Override the default model used for file edits and tool calls:
-
-```bash
-export RUBBER_DUCK_PI_MODEL=gpt-4o
-duck ~/projects/myapp
-```
-
-Auto-detected from your API key if not set: `ANTHROPIC_API_KEY` → `claude-haiku`, `OPENAI_API_KEY` → `gpt-4o-mini`, `GOOGLE_API_KEY` → `gemini-2.0-flash`.
-
-**Thinking level:** Control reasoning depth (default: `off` for speed):
-
-```bash
-export RUBBER_DUCK_PI_THINKING=medium
-duck say "audit the database schema for N+1 query risks"
-```
-
-Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.
-
 ## Updates
 
-- Direct-download installs can use **Check for Updates…** from Settings.
-- Homebrew installs: `brew upgrade --cask rubber-duck`.
-
-## Development
-
-### Build and relaunch the app
-
-```bash
-xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build \
-  && (pkill -x "Rubber Duck" || true) \
-  && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" \
-  && open "/Applications/Rubber Duck.app"
-```
-
-### Rebuild the CLI and restart daemon
-
-```bash
-cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" || true)
-```
-
-### Run tests
-
-```bash
-# Swift unit tests
-xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' test \
-  -derivedDataPath /tmp/rubber-duck-build
-
-# CLI unit tests
-cd cli && npm test
-
-# All E2E tests (require API keys)
-make e2e
-```
-
-### Live hardware barge-in smoke test
-
-```bash
-# 1) Start the app and begin voice listening (Option+D)
-# 2) Run the live smoke scenario (plays question + interruption clips through speakers)
-make smoke-live
-```
-
-This script generates sample clips under `/tmp/rubber-duck-live-smoke/`, waits for the assistant to enter speaking state, then plays an interruption clip and checks `RubberDuck.log` for barge-in markers.
+- Direct-download installs can use **Check for Updates…** from Settings
+- Homebrew installs: `brew upgrade --cask rubber-duck`
 
 ## Troubleshooting
 
-- If the menu bar icon is hidden (common with menu bar overflow apps), press `Option+Shift+D` to open Settings directly.
-- If `duck` commands hang, run `duck doctor` to check daemon health or restart it with `pkill -f duck-daemon`.
-
-## Docs
-
-- [Product requirements](docs/prd.md)
-- [Rubber duck debugging](docs/rubber-duck-debugging.md)
-- [OpenAI Realtime API reference](docs/voice-agents.md)
-- [Pi coding agent reference](docs/pi-coding-agent.md)
+- If the menu bar icon is hidden (common with menu bar overflow apps), press `Option+Shift+D` to open Settings directly
+- If `duck` commands hang, run `duck doctor` to check daemon health or restart it with `pkill -f duck-daemon`
 
 ## License
 

@@ -396,12 +396,6 @@ export interface DaemonEvent {
   sessionId: string;
 }
 
-export interface VoiceSessionChangedEvent {
-  sessionId: string;
-  sessionName: string;
-  type: "voice_session_changed";
-  workspacePath: string;
-}
 
 export type DaemonMessage = DaemonResponse | DaemonEvent;
 

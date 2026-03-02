@@ -16,7 +16,7 @@ import {
 } from "./constants.js";
 import type { DoctorCheck } from "./types.js";
 
-export interface DaemonExtras {
+interface DaemonExtras {
   pid: number;
   runningSessionCount: number;
   uptimeMs: number;

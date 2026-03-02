@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const APP_SUPPORT_OVERRIDE_ENV = "RUBBER_DUCK_APP_SUPPORT";
+const APP_SUPPORT_OVERRIDE_ENV = "RUBBER_DUCK_APP_SUPPORT";
 
 export function resolveAppSupport(options?: {
   env?: NodeJS.ProcessEnv;
@@ -104,8 +104,8 @@ export const DAEMON_STARTUP_TIMEOUT_MS = 3000;
 export const PI_COMMAND_TIMEOUT_MS = 30_000;
 export const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
-export const DEFAULT_PI_MODEL = "gpt-4o-mini";
-export const DEFAULT_PI_PROVIDER = "openai";
+const DEFAULT_PI_MODEL = "gpt-4o-mini";
+const DEFAULT_PI_PROVIDER = "openai";
 
 export const PI_TOOLS = [
   "read",
