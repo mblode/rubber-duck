@@ -97,7 +97,13 @@ export default async function HomePage() {
       </div>
 
       <p className="absolute bottom-7 left-[clamp(40px,12vw,180px)] text-[12px] text-[#48484a]">
-        © {new Date().getFullYear()} Rubber Duck
+        © {new Date().getFullYear()} Matthew Blode ·{" "}
+        <a
+          href="https://github.com/mblode/rubber-duck"
+          className="hover:text-[#636366] transition-colors"
+        >
+          GitHub
+        </a>
       </p>
     </main>
   );
