@@ -370,7 +370,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = RubberDuck;
+				PRODUCT_NAME = "Rubber Duck";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -404,7 +405,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
 				PRODUCT_BUNDLE_IDENTIFIER = co.blode.rubber-duck;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = RubberDuck;
+				PRODUCT_NAME = "Rubber Duck";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -423,7 +425,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuck";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Rubber Duck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Rubber Duck";
 			};
 			name = Debug;
 		};
@@ -440,7 +442,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuck";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Rubber Duck.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Rubber Duck";
 			};
 			name = Release;
 		};

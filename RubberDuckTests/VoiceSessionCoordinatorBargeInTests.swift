@@ -201,10 +201,10 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 
-    /// With software AEC active (hardware AEC off), the guard windows should use the
-    /// AEC-short path — identical to hardware AEC — so barge-in fires quickly.
-    func test_sustainedSpeechWithSoftwareAEC_triggersBargeInAtShortGuardWindow() async throws {
-        // Software AEC on, hardware AEC off — should use short guard (0.18 s).
+    /// Without hardware AEC (software AEC only), the mic must be muted during playback
+    /// to prevent echo from reaching the server. Barge-in is intentionally disabled in
+    /// this mode since echo suppression is not reliable enough at the scalar AEC level.
+    func test_noHardwareAEC_withSoftwareAEC_mutesDuringPlayback_noBargein() async throws {
         let harness = makeHarness(bargeInDelay: 0.03, echoCancellationActive: false, softwareAECActive: true)
         defer {
             UserDefaults(suiteName: harness.defaultsSuiteName)?
@@ -219,27 +219,26 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
-        // Wait just past the software-AEC guard window (0.18 s) but well under
-        // the no-AEC guard window (0.45 s) to verify we're taking the fast path.
-        try await Task.sleep(nanoseconds: 260_000_000)  // 260 ms > 0.18 s guard
-        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
-        try await Task.sleep(nanoseconds: 120_000_000)  // 120 ms > 30 ms confirmation delay
+        // Without hardware AEC, mic must be muted during playback to prevent echo loops.
+        XCTAssertTrue(harness.audioManager.muteInput,
+                      "Mic must be muted during playback when hardware AEC is unavailable")
 
-        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1,
-                       "Barge-in must fire with software AEC active")
-        XCTAssertGreaterThanOrEqual(harness.playbackManager.startPlaybackCallCount, 1)
-        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 0)
-        XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
-        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-sw-aec")
-        XCTAssertEqual(harness.coordinator.sessionState, .listening)
+        // Speech events during muted playback must not trigger barge-in.
+        try await Task.sleep(nanoseconds: 260_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0,
+                       "Barge-in must not fire when mic is muted")
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 
     /// A `speech_started` event suppressed by the assistant-audio guard window must NOT call
     /// `notifySpeechDetected()` — that would block gain calibration and create the catch-22 loop
     /// where echo prevents calibration from ever converging.
     func test_suppressedSpeechStarted_doesNotCallNotifySpeechDetected() async throws {
-        // Software AEC on, hardware off — uses 0.18s guard window.
-        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: false, softwareAECActive: true)
+        // Hardware AEC on — mic stays open during playback so guard window logic applies.
+        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: true)
         defer {
             UserDefaults(suiteName: harness.defaultsSuiteName)?
                 .removePersistentDomain(forName: harness.defaultsSuiteName)
@@ -254,7 +253,7 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
-        // Fire speech_started immediately — within the 0.18s software-AEC guard window.
+        // Fire speech_started immediately — within the hardware-AEC guard window (0.22 s).
         // The coordinator must suppress it AND must NOT call notifySpeechDetected().
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
 
@@ -267,7 +266,8 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
     /// A `speech_started` event that passes all guard windows must call `notifySpeechDetected()`
     /// exactly once so gain calibration is paused during real user speech.
     func test_acceptedSpeechStarted_callsNotifySpeechDetectedOnce() async throws {
-        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: false, softwareAECActive: true)
+        // Hardware AEC on — mic stays open during playback so barge-in and notifySpeechDetected work.
+        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: true)
         defer {
             UserDefaults(suiteName: harness.defaultsSuiteName)?
                 .removePersistentDomain(forName: harness.defaultsSuiteName)
@@ -281,7 +281,7 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
-        // Wait past the software-AEC guard window (0.18 s) so the event is accepted.
+        // Wait past the hardware-AEC guard window (0.22 s) so the event is accepted.
         try await Task.sleep(nanoseconds: 260_000_000)
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
 
@@ -289,7 +289,9 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
                        "notifySpeechDetected must be called exactly once for an accepted speech_started event")
     }
 
-    func test_sustainedSpeechDuringSpeakingWithoutAEC_triggersDegradedBargeIn() async throws {
+    /// Without hardware AEC (no AEC at all), the mic must be muted during playback to prevent
+    /// echo from reaching the server and triggering false barge-in.
+    func test_speakingWithoutAEC_mutesDuringPlayback_noBargein() async throws {
         let harness = makeHarness(bargeInDelay: 0.03, echoCancellationActive: false)
         defer {
             UserDefaults(suiteName: harness.defaultsSuiteName)?
@@ -304,15 +306,17 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
-        // Without AEC, guard windows and confirmation delay are intentionally longer.
+        // Without hardware AEC, mic must be muted during playback.
+        XCTAssertTrue(harness.audioManager.muteInput,
+                      "Mic must be muted during playback when hardware AEC is unavailable")
+
+        // Even with sustained speech events, barge-in must not fire while muted.
         try await Task.sleep(nanoseconds: 520_000_000)
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
         try await Task.sleep(nanoseconds: 650_000_000)
 
-        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1)
-        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 0)
-        XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
-        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-no-aec")
-        XCTAssertEqual(harness.coordinator.sessionState, .listening)
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0,
+                       "Barge-in must not fire when mic is muted")
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 }

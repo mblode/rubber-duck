@@ -94,7 +94,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 0.45
     private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 0.9
     private let minimumBargeInConfirmationDelayWithoutAECSeconds: TimeInterval = 0.55
-    private let speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC: TimeInterval = 0.18
+    private let minimumBargeInConfirmationDelayWithSoftwareAECSeconds: TimeInterval = 0.45
+    private let speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC: TimeInterval = 0.30
     private var pendingListeningTransitionWorkItem: DispatchWorkItem?
 
     private var isAnyAECActive: Bool {
@@ -313,6 +314,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     private func effectiveBargeInConfirmationDelaySeconds() -> TimeInterval {
+        if audioManager.isSoftwareAECActive && !audioManager.isEchoCancellationActive {
+            return max(bargeInConfirmationDelaySeconds, minimumBargeInConfirmationDelayWithSoftwareAECSeconds)
+        }
         if isAnyAECActive {
             return bargeInConfirmationDelaySeconds
         }
@@ -404,9 +408,10 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         if state == .speaking {
             cancelInputUnmute()
             lastAssistantPlaybackEndedAt = nil
-            // Keep barge-in available in degraded no-AEC mode; rely on guard windows
-            // and confirmation delay to reject speaker bleed.
-            audioManager.muteInput = false
+            // Hardware AEC (VoiceProcessingIO) cancels echo in real-time — keep mic open for barge-in.
+            // Without hardware AEC, echo reaches the server and gets transcribed as user speech.
+            // Mute input; scheduleInputUnmute() re-enables it after playback drains.
+            audioManager.muteInput = audioManager.isEchoCancellationActive ? false : true
         } else if wasLeavingSpeaking {
             lastAssistantPlaybackEndedAt = Date()
             if state == .idle {
@@ -965,7 +970,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         pendingFunctionCallIDs.removeAll()
         currentAudioItemId = nil
         currentAudioContentIndex = nil
-        lastAssistantAudioDeltaAt = nil
+        // Keep lastAssistantAudioDeltaAt — it will be overwritten naturally by the first
+        // audio delta of the new response. Clearing it here creates a guard-free window
+        // between response_created and the first delta where echo can trigger false barge-in.
         lastAssistantPlaybackEndedAt = nil
         clearSpeechTurnState()
     }

@@ -8,8 +8,6 @@ enum AudioConstants {
     static let sampleRate: Double = 24000
     static let captureBufferSize: AVAudioFrameCount = 1024
     static let channels: AVAudioChannelCount = 1
-    // VoiceProcessingIO is not reliable on some multi-channel input devices.
-    static let maxVoiceProcessingInputChannels: AVAudioChannelCount = 2
     /// RMS threshold below which audio is replaced with silence to prevent
     /// ambient noise from triggering server-side VAD. ~-46 dBFS, well below speech.
     static let noiseGateThreshold: Float = 0.005
@@ -78,13 +76,10 @@ enum AudioEngineStartupPlanner {
         maxStartAttemptsPerMode: Int = 2
     ) -> [AudioEngineStartupPlanStep] {
         let attempts = max(1, maxStartAttemptsPerMode)
-        let canUseVoiceProcessing: Bool
-        if let detectedInputChannels {
-            canUseVoiceProcessing = detectedInputChannels <= AudioConstants.maxVoiceProcessingInputChannels
-        } else {
-            // Conservative default: unknown channel topology should not start in VP mode.
-            canUseVoiceProcessing = false
-        }
+        // Always attempt VP first — setupAudioEngine handles mono downmix for multi-channel
+        // inputs (e.g. MacBook Pro 9-channel mic), and the planner falls back to standard
+        // mode if VP engine start fails.
+        let canUseVoiceProcessing: Bool = preferVoiceProcessing
         if preferVoiceProcessing {
             if canUseVoiceProcessing {
                 return [
@@ -336,21 +331,12 @@ class AudioManager: NSObject, ObservableObject {
         let setupDiagnostics = "graph=\(graphMode) input=\(preVoiceProcessingInputFormat)"
 
         if enableVoiceProcessing {
-            if preVoiceProcessingInputFormat.channelCount > AudioConstants.maxVoiceProcessingInputChannels {
-                logInfo(
-                    "AudioManager: Skipping Voice Processing setup (input channels=\(preVoiceProcessingInputFormat.channelCount), max=\(AudioConstants.maxVoiceProcessingInputChannels))"
-                )
-                setLastSetupError(
-                    code: -10875,
-                    message: "Voice Processing disabled for multi-channel input",
-                    diagnostics: setupDiagnostics
-                )
-                cleanupAudioEngine()
-                return false
-            }
             // Enable Voice Processing IO for acoustic echo cancellation + noise suppression.
             // Both capture and playback must share the same engine for AEC to have a
             // reference signal from the output path.
+            // Multi-channel inputs (e.g. MacBook Pro 9-channel mic array) are handled via
+            // mono downmix below — VoiceProcessingIO AEC still operates on the hardware
+            // reference signal regardless of the downstream capture format.
             do {
                 try inputNode.setVoiceProcessingEnabled(true)
                 logInfo("AudioManager: Voice Processing IO enabled (AEC + noise suppression active)")
@@ -394,7 +380,7 @@ class AudioManager: NSObject, ObservableObject {
         // the audio graph is valid. VoiceProcessingIO AEC still operates on the hardware-level
         // reference signal regardless of the downstream capture format.
         let captureFormat: AVAudioFormat
-        if enableVoiceProcessing && inputFormat.channelCount > AudioConstants.maxVoiceProcessingInputChannels {
+        if enableVoiceProcessing && inputFormat.channelCount > 2 {
             captureFormat = AVAudioFormat(
                 standardFormatWithSampleRate: inputFormat.sampleRate,
                 channels: 1
@@ -496,15 +482,15 @@ class AudioManager: NSObject, ObservableObject {
                     : AudioConstants.noiseGateHoldTimeWithoutAEC
 
                 // Proportional echo gate: when reference was read this frame, raise the gate
-                // threshold to 1.5× reference RMS. Residual echo (always ≤ refRMS × gain_error)
-                // can't pass, but user speech louder than 1.5× the echo still triggers barge-in.
+                // threshold to 3.0× reference RMS. Residual echo after software AEC subtraction
+                // is typically 1–2× reference; genuine speech is 3–6× reference at the mic.
                 if self.lastAECReadSucceeded {
                     let frameCount = Int(finalBuffer.frameLength)
                     var refRMS: Float = 0
                     self.aecScratch.withUnsafeBufferPointer { ptr in
                         vDSP_rmsqv(ptr.baseAddress!, 1, &refRMS, vDSP_Length(frameCount))
                     }
-                    let proportionalThreshold = refRMS * 1.5
+                    let proportionalThreshold = refRMS * 3.0
                     if proportionalThreshold > activeNoiseGateThreshold {
                         activeNoiseGateThreshold = proportionalThreshold
                     }
@@ -656,11 +642,6 @@ class AudioManager: NSObject, ObservableObject {
                 defer { self.isCaptureStartupFlag.withLock { $0 = false } }
 
                 let detectedChannels = self.detectedInputChannelCount()
-                if let detectedChannels, detectedChannels > AudioConstants.maxVoiceProcessingInputChannels {
-                    logInfo(
-                        "AudioManager: Skipping Voice Processing startup (input channels=\(detectedChannels))"
-                    )
-                }
 
                 let startupPlan = AudioEngineStartupPlanner.makeStartupPlan(
                     preferVoiceProcessing: true,
@@ -785,6 +766,19 @@ class AudioManager: NSObject, ObservableObject {
                     if step.mode == .voiceProcessing {
                         logInfo("AudioManager: Falling back to standard audio engine startup")
                     }
+                }
+
+                // Try VP in capture-only mode: removes the multi-channel output format conflict
+                // that causes -10875 in shared-graph mode. VoiceProcessingIO uses the system
+                // audio output as its AEC reference at the driver level, independent of the
+                // app's AVAudioEngine graph — hardware AEC works without a playerNode present.
+                logInfo("AudioManager: Retrying with voice-processing capture-only mode")
+                if attemptEngineStart(
+                    step: AudioEngineStartupPlanStep(mode: .voiceProcessing, maxStartAttempts: 2),
+                    includePlaybackNode: false
+                ) {
+                    logInfo("AudioManager: VP capture-only active; hardware AEC on, playback uses fallback engine")
+                    return
                 }
 
                 // Last-resort fallback for hardware/driver combinations that fail to
@@ -928,7 +922,10 @@ class AudioManager: NSObject, ObservableObject {
                                              referenceSamples: UnsafePointer<Float>,
                                              frameCount: Int) {
         guard !isEchoCancellationActiveFlag.withLock({ $0 }) else { return }
-        guard Date().timeIntervalSince(lastSpeechDetectedAt) > 0.5 else { return }
+        // Suppress calibration for 1.2s after speech — matches the full VAD suppression window.
+        // 0.5s was too short: echo arriving after the assistant begins responding could
+        // retune the gain toward the echo, degrading cancellation over time.
+        guard Date().timeIntervalSince(lastSpeechDetectedAt) > 1.2 else { return }
         guard frameCount > 0 else { return }
 
         var captureRMS: Float = 0

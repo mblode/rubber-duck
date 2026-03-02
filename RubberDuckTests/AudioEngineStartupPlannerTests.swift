@@ -26,14 +26,23 @@ final class AudioEngineStartupPlannerTests: XCTestCase {
         XCTAssertEqual(plan, [AudioEngineStartupPlanStep(mode: .standard, maxStartAttempts: 2)])
     }
 
-    func test_makeStartupPlan_withHighChannelInput_skipsVoiceProcessingMode() {
+    func test_makeStartupPlan_withHighChannelInput_attemptsVoiceProcessingWithFallback() {
+        // Multi-channel inputs (e.g. MacBook Pro 9-channel mic) still attempt VP first.
+        // setupAudioEngine handles mono downmix; if VP engine start fails the planner
+        // falls through to the standard-mode step automatically.
         let plan = AudioEngineStartupPlanner.makeStartupPlan(
             preferVoiceProcessing: true,
             detectedInputChannels: 9,
             maxStartAttemptsPerMode: 2
         )
 
-        XCTAssertEqual(plan, [AudioEngineStartupPlanStep(mode: .standard, maxStartAttempts: 2)])
+        XCTAssertEqual(
+            plan,
+            [
+                AudioEngineStartupPlanStep(mode: .voiceProcessing, maxStartAttempts: 2),
+                AudioEngineStartupPlanStep(mode: .standard, maxStartAttempts: 2)
+            ]
+        )
     }
 
     func test_shouldRetryEngineStart_onlyBeforeFinalAttempt_forRetryableErrors() {

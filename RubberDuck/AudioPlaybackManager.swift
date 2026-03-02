@@ -36,6 +36,7 @@ class AudioPlaybackManager: ObservableObject {
 
     private(set) var totalSamplesScheduled: Int = 0
     private(set) var totalSamplesPlayed: Int = 0
+    private var playbackEpoch: Int = 0
     private var firstEnqueueAt: Date?
     private var firstScheduleLatencyLogged = false
     private var droppedChunksBeforeReady = 0
@@ -253,9 +254,12 @@ class AudioPlaybackManager: ObservableObject {
             let scheduledAt = mach_absolute_time()
             self.referenceBuffer?.write(int16Data: data, scheduledAt: scheduledAt)
 
+            // Capture epoch so callbacks from this response can self-identify as stale
+            // if resetPlaybackMetrics() is called before they fire (rapid response sequences).
+            let epoch = self.playbackEpoch
             playerNode.scheduleBuffer(buffer) { [weak self] in
                 self?.playbackQueue.async {
-                    guard let self else { return }
+                    guard let self, self.playbackEpoch == epoch else { return }
                     self.totalSamplesPlayed += sampleCount
                     if let key {
                         var stats = self.itemSamples[key, default: AudioPlaybackItemSamples()]
@@ -277,6 +281,7 @@ class AudioPlaybackManager: ObservableObject {
     // MARK: - Private
 
     private func resetPlaybackMetrics() {
+        playbackEpoch += 1  // Invalidate scheduleBuffer callbacks from the previous response.
         totalSamplesScheduled = 0
         totalSamplesPlayed = 0
         firstEnqueueAt = nil

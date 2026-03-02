@@ -361,14 +361,14 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
         ]
         let turnDetection: [String: Any] = [
             "type": "semantic_vad",
-            "eagerness": "auto",
+            "eagerness": "low",
             "interrupt_response": true,
             "create_response": true
         ]
         let inputAudio: [String: Any] = [
             "format": audioFormat,
             "turn_detection": turnDetection,
-            "transcription": ["model": "gpt-4o-mini-transcribe"],
+            "transcription": ["model": "gpt-4o-mini-transcribe", "language": "en"],
             "noise_reduction": ["type": "near_field"]
         ]
 
