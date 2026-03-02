@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// Builds a standalone rubber-duck binary using esbuild (ESM→CJS) + @yao-pkg/pkg.
+// Builds standalone rubber-duck binaries using esbuild (ESM→CJS) + @yao-pkg/pkg.
+//
+// Produces two arch-specific binaries (arm64 + x64) for distribution as separate
+// GitHub release assets. The app downloads the matching arch on first launch rather
+// than embedding the binary in the app bundle.
 //
 // Note on universal binaries: pkg embeds its JavaScript payload after the Mach-O
 // binary. lipo(1) merges Mach-O segments but does not adjust the post-binary
 // payload offsets, so lipo-combined pkg binaries are broken at runtime.
-// We therefore build a single-arch binary for the current host (arm64 on Apple
-// Silicon CI runners, x64 on Intel).  Rosetta 2 handles arm64→x64 transparently
-// for any Intel Mac users.
+// We therefore build separate arm64 and x64 binaries.
 
 import { execSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -41,12 +43,22 @@ await build({
 });
 console.log("  → dist/cli.cjs");
 
-// Step 2: pkg creates a native standalone binary.
-console.log(`Step 2: pkg → cli-bin/rubber-duck (node22-macos-${nativeArch})`);
-execSync(
-  `npx pkg dist/cli.cjs --target node22-macos-${nativeArch} --output ${OUT_DIR}/rubber-duck`,
-  { stdio: "inherit" }
-);
+// Step 2: pkg creates arch-specific standalone binaries.
+for (const arch of ["arm64", "x64"]) {
+  console.log(
+    `Step 2 (${arch}): pkg → cli-bin/rubber-duck-${arch} (node22-macos-${arch})`
+  );
+  execSync(
+    `npx pkg dist/cli.cjs --target node22-macos-${arch} --output ${OUT_DIR}/rubber-duck-${arch}`,
+    { stdio: "inherit" }
+  );
+  execSync(`chmod +x ${OUT_DIR}/rubber-duck-${arch}`, { stdio: "inherit" });
+  console.log(`Binary (${arch}): ${OUT_DIR}/rubber-duck-${arch}`);
+}
 
+// Convenience copy of native arch for local testing (e.g. rubber-duck doctor).
+execSync(`cp ${OUT_DIR}/rubber-duck-${nativeArch} ${OUT_DIR}/rubber-duck`, {
+  stdio: "inherit",
+});
 execSync(`chmod +x ${OUT_DIR}/rubber-duck`, { stdio: "inherit" });
-console.log(`Binary (${nativeArch}): ${OUT_DIR}/rubber-duck`);
+console.log(`Native copy: ${OUT_DIR}/rubber-duck (${nativeArch})`);

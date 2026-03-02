@@ -136,14 +136,17 @@ jobs:
       - name: Install dependencies
         run: cd cli && npm ci
 
-      - name: Build universal binary
+      - name: Build CLI binaries (arm64 + x64)
         run: make cli-binary
 
-      - name: Upload CLI binary artifact
+      - name: Upload CLI binary artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: rubber-duck-universal-binary
-          path: cli-bin/rubber-duck
+          name: rubber-duck-binaries
+          path: |
+            cli-bin/rubber-duck-arm64
+            cli-bin/rubber-duck-x64
+          retention-days: 1
 
   release:
     name: Release
@@ -173,22 +176,22 @@ jobs:
             -scheme Commandment \
             -derivedDataPath /tmp/rubber-duck-build
 
-      - name: Download CLI binary artifact
+      - name: Download CLI binaries
         uses: actions/download-artifact@v4
         with:
-          name: rubber-duck-universal-binary
+          name: rubber-duck-binaries
           path: cli-bin/
 
-      - name: Stage CLI binary
+      - name: Prepare CLI release assets
         run: |
-          chmod +x cli-bin/rubber-duck
-          mkdir -p RubberDuck/CLI
-          cp cli-bin/rubber-duck RubberDuck/CLI/rubber-duck
-
-      - name: Verify CLI binary
-        run: |
-          file cli-bin/rubber-duck
-          ./cli-bin/rubber-duck --version
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          chmod +x cli-bin/rubber-duck-arm64 cli-bin/rubber-duck-x64
+          mv cli-bin/rubber-duck-arm64 "cli-bin/rubber-duck-${VERSION}-macos-arm64"
+          mv cli-bin/rubber-duck-x64 "cli-bin/rubber-duck-${VERSION}-macos-x64"
+          echo "CLI_ARM64=cli-bin/rubber-duck-${VERSION}-macos-arm64" >> $GITHUB_ENV
+          echo "CLI_X64=cli-bin/rubber-duck-${VERSION}-macos-x64" >> $GITHUB_ENV
+          file "cli-bin/rubber-duck-${VERSION}-macos-arm64"
+          file "cli-bin/rubber-duck-${VERSION}-macos-x64"
 
       - name: Archive
         run: |
@@ -277,14 +280,32 @@ jobs:
 
             1. Download **RubberDuck-${{ steps.version.outputs.VERSION }}.dmg** below
             2. Open the DMG and drag Rubber Duck to Applications
-            3. Launch Rubber Duck — it will automatically install the `rubber-duck` CLI to `/usr/local/bin`
+            3. Launch Rubber Duck — it automatically downloads and installs the `rubber-duck` CLI
             4. Enter your OpenAI API key in Settings
             5. Grant microphone permissions when prompted
 
             **CLI tools:** `rubber-duck [path]`, `rubber-duck say "..."`, `rubber-duck doctor`
 
             **Requires macOS 15.2 or later and an OpenAI API key.**
-          files: /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
+
+            ---
+
+            ### Standalone CLI binaries
+
+            For direct CLI installation without the app, download the binary for your architecture:
+            - **Apple Silicon (M1/M2/M3/M4):** `rubber-duck-${{ steps.version.outputs.VERSION }}-macos-arm64`
+            - **Intel Mac:** `rubber-duck-${{ steps.version.outputs.VERSION }}-macos-x64`
+
+            ```bash
+            # Apple Silicon
+            curl -L -o /usr/local/bin/rubber-duck \
+              https://github.com/mblode/rubber-duck/releases/download/v${{ steps.version.outputs.VERSION }}/rubber-duck-${{ steps.version.outputs.VERSION }}-macos-arm64
+            chmod +x /usr/local/bin/rubber-duck
+            ```
+          files: |
+            /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
+            ${{ env.CLI_ARM64 }}
+            ${{ env.CLI_X64 }}
           draft: false
           prerelease: false
 
@@ -383,9 +404,6 @@ jobs:
             auto_updates true
 
             app "Rubber Duck.app"
-
-            binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck"
-            binary "#{appdir}/Rubber Duck.app/Contents/MacOS/rubber-duck", target: "rubber-duck-daemon"
 
             zap trash: [
               "~/Library/Preferences/co.blode.rubber-duck.plist",

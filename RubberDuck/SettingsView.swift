@@ -124,26 +124,26 @@ struct SettingsView: View {
                 }
             }
 
-            if case .notBundled = cliInstaller.status {
-                EmptyView()
-            } else {
-                Section("CLI Tools") {
-                    HStack {
-                        cliStatusLabel
-                        Spacer()
-                        Button(cliInstaller.isInstalled ? "Reinstall" : "Install") {
-                            cliInstaller.install()
-                        }
+            Section("CLI Tools") {
+                HStack {
+                    cliStatusLabel
+                    Spacer()
+                    Button(cliInstaller.isInstalled ? "Reinstall" : "Download") {
+                        Task { await cliInstaller.install() }
                     }
-                    if cliInstaller.isInstalled {
-                        Button("Uninstall", role: .destructive) {
-                            cliInstaller.uninstall()
-                        }
-                    }
-                    Text("Installs `rubber-duck` and `rubber-duck-daemon` commands to /usr/local/bin")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .disabled({
+                        if case .downloading = cliInstaller.status { return true }
+                        return false
+                    }())
                 }
+                if cliInstaller.isInstalled {
+                    Button("Uninstall", role: .destructive) {
+                        cliInstaller.uninstall()
+                    }
+                }
+                Text("Downloads `rubber-duck` to ~/Library/Application Support and symlinks to /usr/local/bin")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Updates") {
@@ -219,16 +219,16 @@ struct SettingsView: View {
     @ViewBuilder
     private var cliStatusLabel: some View {
         switch cliInstaller.status {
-        case .notBundled:
-            Text("CLI not available in this build")
-                .foregroundStyle(.secondary)
         case .notInstalled:
             Label("rubber-duck not installed", systemImage: "terminal")
+        case .downloading:
+            Label("Downloading rubber-duck...", systemImage: "arrow.down.circle")
+                .foregroundStyle(.secondary)
         case .installed(let v):
             Label("rubber-duck v\(v) installed", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
-        case .stale:
-            Label("Outdated — click Reinstall", systemImage: "exclamationmark.triangle")
+        case .updateAvailable(let installed, let new):
+            Label("Update available: v\(installed) → v\(new)", systemImage: "arrow.up.circle")
                 .foregroundStyle(.orange)
         case .error(let msg):
             Text(msg).foregroundStyle(.red)

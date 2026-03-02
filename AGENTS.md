@@ -29,9 +29,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 
 ### CLI Binary (standalone, no Node required)
 
-- `make cli-binary` — Build standalone universal (arm64+x64) `rubber-duck` binary via esbuild+pkg into `cli-bin/`
-- `make embed-cli` — Copy `cli-bin/rubber-duck` into `RubberDuck/CLI/` for Xcode embedding (run before building app)
-- `make embed-cli-optional` — Embed if already built, skip otherwise (safe for dev builds)
+- `make cli-binary` — Build standalone `rubber-duck` binaries (arm64 + x64) via esbuild+pkg into `cli-bin/`; produces `rubber-duck-arm64`, `rubber-duck-x64`, and a native-arch copy `rubber-duck`
 
 ### E2E Tests (require API keys)
 
@@ -64,7 +62,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - Swift app connects to `daemon.sock` via `DaemonSocketClient` (Network.framework NWConnection, `@MainActor`). If daemon absent the app runs normally — voice tools return an error, workspace switching falls back to 2s polling.
 - Voice tool calls (`read_file`, `write_file`, `edit_file`, `bash`, `grep_search`, `find_files`) are executed by `cli/src/daemon/voice-tools.ts` via the `voice_tool_call` daemon method. Swift no longer implements these tools locally.
 - Workspace switching from `rubber-duck [path]` → Swift menu bar is instant via `voice_session_changed` daemon push (no polling delay when daemon is running).
-- CLI binary is embedded in `Contents/MacOS/rubber-duck` (built via `make cli-binary && make embed-cli`). The app auto-installs symlinks in `/usr/local/bin` on first launch via `CLIInstaller`. Run `make embed-cli` before building the Xcode project if you need the binary present in the archive.
+- CLI binary is **not bundled** in the app. On first launch `CLIInstaller` downloads the matching-version binary from GitHub Releases (`rubber-duck-{version}-macos-{arm64|x64}`) to `~/Library/Application Support/RubberDuck/rubber-duck`, strips quarantine, and symlinks to `/usr/local/bin`. On app update the version mismatch triggers an auto-redownload.
 - The standalone `rubber-duck` binary acts as both CLI and daemon — daemon mode is activated when `argv[0]` ends in `rubber-duck-daemon` (via symlink) or `--daemon` flag is passed.
 
 ## Conventions
@@ -77,7 +75,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 
 - `make build` — Release build
 - `make cli-build` — Build CLI (TypeScript → dist/)
-- `make cli-binary` — Build standalone universal binary (esbuild CJS bundle + pkg + lipo)
+- `make cli-binary` — Build standalone arm64 + x64 binaries (esbuild CJS bundle + pkg); outputs `cli-bin/rubber-duck-{arm64,x64}`
 - `make cli-test` — Run CLI tests (passes when no tests are present)
 - `make dmg` — Build + create DMG (requires `brew install create-dmg`)
 - `make notarize` — Build + DMG + notarize (requires Apple Developer credentials in env)

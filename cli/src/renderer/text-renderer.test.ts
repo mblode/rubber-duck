@@ -77,7 +77,7 @@ describe("text renderer", () => {
     expect(output).toContain("Duck: Hello from delta");
   });
 
-  it("renders compact voice marker on speech_stopped when not verbose", () => {
+  it("suppresses speech_stopped user_audio marker when not verbose", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -93,7 +93,7 @@ describe("text renderer", () => {
     renderer.render(event);
     renderer.cleanup();
 
-    expect(output).toContain("User: [voice message]");
+    expect(output).toBe("");
   });
 
   it("suppresses speech_started user_audio marker when not verbose", () => {

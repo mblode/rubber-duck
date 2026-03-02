@@ -102,11 +102,4 @@ enum AppSupportPaths {
             env["XCTestSessionIdentifier"] != nil
     }
 
-    /// Returns the URL of the bundled `rubber-duck` binary inside the app bundle,
-    /// or nil if the binary is not present (dev build without make embed-cli).
-    static func bundledCLIURL() -> URL? {
-        guard let execURL = Bundle.main.executableURL else { return nil }
-        let url = execURL.deletingLastPathComponent().appendingPathComponent("rubber-duck")
-        return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }
 }

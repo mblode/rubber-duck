@@ -16,8 +16,7 @@ struct SetupChecklistView: View {
     }
 
     private var isCLIReady: Bool {
-        if case .notBundled = cliInstaller.status { return true } // skip in dev builds
-        return cliInstaller.isInstalled
+        cliInstaller.isInstalled
     }
 
     private var allStepsComplete: Bool {
@@ -78,14 +77,15 @@ struct SetupChecklistView: View {
     @ViewBuilder
     private var cliInstallStep: some View {
         switch cliInstaller.status {
-        case .notBundled:
-            EmptyView() // dev build without embed-cli — omit
-        case .installed:
+        case .installed, .updateAvailable:
             Label("CLI tools installed", systemImage: "checkmark.circle.fill")
-        case .notInstalled, .stale:
+        case .downloading:
+            Label("Downloading CLI tools...", systemImage: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+        case .notInstalled:
             Label("Install CLI tools", systemImage: "terminal")
-            Button("Install rubber-duck CLI") {
-                cliInstaller.install()
+            Button("Download rubber-duck CLI") {
+                Task { await cliInstaller.install() }
             }
             Text("Makes `rubber-duck` available in your terminal")
                 .font(.caption)

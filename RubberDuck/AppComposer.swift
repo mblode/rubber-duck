@@ -97,17 +97,15 @@ enum AppComposer {
 
         scheduleFirstLaunchSettingsRevealIfNeeded(configManager: transcription)
 
-        // Auto-install rubber-duck CLI on first launch (no sudo required on macOS)
+        // Auto-install/update rubber-duck CLI on first launch or after app update
         Task { @MainActor in
             guard !AppEnvironment.isRunningTests else { return }
             let installer = CLIInstaller.shared
-            guard case .notInstalled = installer.status else { return }
-            guard FileManager.default.isWritableFile(atPath: "/usr/local/bin") else {
-                logInfo("CLIInstaller: /usr/local/bin not writable, skipping auto-install")
-                return
-            }
-            if let err = installer.install() {
-                logInfo("CLIInstaller: auto-install failed: \(err)")
+            switch installer.status {
+            case .notInstalled, .updateAvailable:
+                await installer.install()
+            default:
+                break
             }
         }
 

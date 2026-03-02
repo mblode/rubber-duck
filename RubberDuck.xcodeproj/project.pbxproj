@@ -10,7 +10,6 @@
 			3FB30F1B2F47A5760009EF71 /* KeyboardShortcuts in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000001 /* KeyboardShortcuts */; };
 			3FB30F1C2F47A5760009EF71 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000003 /* LaunchAtLogin */; };
 			3FB30F1D2F47A5760009EF71 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AABB000000000006 /* Sparkle */; };
-			CLIBUILD0000001 /* rubber-duck in Embed CLI */ = {isa = PBXBuildFile; fileRef = CLIFILE0000001 /* rubber-duck */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -26,7 +25,6 @@
 /* Begin PBXFileReference section */
 		01607EFB2D1883C80006DBE4 /* RubberDuck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RubberDuck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CC000000000000B1 /* RubberDuckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RubberDuckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		CLIFILE0000001 /* rubber-duck */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; name = "rubber-duck"; path = "cli-bin/rubber-duck"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -34,7 +32,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				"CLI/rubber-duck",
 			);
 			target = 01607EFA2D1883C80006DBE4 /* RubberDuck */;
 		};
@@ -79,7 +76,6 @@
 				01607EFD2D1883C80006DBE4 /* RubberDuck */,
 				CC000000000000C1 /* RubberDuckTests */,
 				01607EFC2D1883C80006DBE4 /* Products */,
-				CLIFILE0000001 /* rubber-duck */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,7 +98,6 @@
 				01607EF72D1883C80006DBE4 /* Sources */,
 				01607EF82D1883C80006DBE4 /* Frameworks */,
 				01607EF92D1883C80006DBE4 /* Resources */,
-				CLIPHASE0000001 /* Embed CLI Binaries */,
 			);
 			buildRules = (
 			);
@@ -184,19 +179,6 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		CLIPHASE0000001 /* Embed CLI Binaries */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 6;
-			files = (
-				CLIBUILD0000001 /* rubber-duck in Embed CLI */,
-			);
-			name = "Embed CLI Binaries";
-			runOnlyForDeploymentPostprocessing = 1;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
 		01607EF92D1883C80006DBE4 /* Resources */ = {
