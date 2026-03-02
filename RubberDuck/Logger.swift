@@ -40,7 +40,7 @@ class Logger {
         self.minimumLevel = Self.resolveMinimumLevel(processInfo: processInfo)
         self.logToStderr = Self.parseBool(processInfo.environment[Self.logToStderrEnv]) ?? false
         self.logFileURL = Self.resolveLogFileURL(fileManager: fileManager, processInfo: processInfo)
-        log("RubberDuck application launched", level: .info)
+        log("Rubber Duck application launched", level: .info)
     }
 
     func log(_ message: String, level: LogLevel = .info) {
@@ -102,7 +102,7 @@ class Logger {
     }
 
     deinit {
-        log("RubberDuck application terminated", level: .info)
+        log("Rubber Duck application terminated", level: .info)
     }
 
     private static func resolveMinimumLevel(processInfo: ProcessInfo) -> LogLevel {

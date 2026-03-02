@@ -193,19 +193,19 @@ jobs:
       - name: Create DMG
         run: |
           create-dmg \
-            --volname "RubberDuck" \
+            --volname "Rubber Duck" \
             --background "installer/dmg-background.png" \
             --window-pos 200 120 \
             --window-size 700 460 \
             --icon-size 128 \
-            --icon "RubberDuck.app" 175 230 \
+            --icon "Rubber Duck.app" 175 230 \
             --app-drop-link 525 230 \
-            --hide-extension "RubberDuck.app" \
+            --hide-extension "Rubber Duck.app" \
             --text-size 14 \
-            --volicon "/tmp/rubber-duck-build/export/RubberDuck.app/Contents/Resources/AppIcon.icns" \
+            --volicon "/tmp/rubber-duck-build/export/Rubber Duck.app/Contents/Resources/AppIcon.icns" \
             --no-internet-enable \
             "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg" \
-            "/tmp/rubber-duck-build/export/RubberDuck.app" \
+            "/tmp/rubber-duck-build/export/Rubber Duck.app" \
           || test -f "/tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg"
 
       - name: Notarize DMG
@@ -229,13 +229,13 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: RubberDuck ${{ steps.version.outputs.VERSION }}
+          name: Rubber Duck ${{ steps.version.outputs.VERSION }}
           body: |
             ## Installation
 
             1. Download **RubberDuck-${{ steps.version.outputs.VERSION }}.dmg** below
-            2. Open the DMG and drag RubberDuck to Applications
-            3. Launch RubberDuck from Applications
+            2. Open the DMG and drag Rubber Duck to Applications
+            3. Launch Rubber Duck from Applications
             4. Click the microphone icon in the menu bar and enter your OpenAI API key in Settings
             5. Grant microphone and accessibility permissions when prompted
 
@@ -269,9 +269,9 @@ jobs:
               xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
               xmlns:dc="http://purl.org/dc/elements/1.1/">
             <channel>
-              <title>RubberDuck</title>
+              <title>Rubber Duck</title>
               <link>https://github.com/mblode/rubber-duck</link>
-              <description>RubberDuck updates</description>
+              <description>Rubber Duck updates</description>
               <language>en</language>
               <item>
                 <title>Version ${VERSION}</title>
@@ -331,14 +331,14 @@ jobs:
             sha256 "${SHA256}"
 
             url "https://github.com/mblode/rubber-duck/releases/download/v#{version}/RubberDuck-#{version}.dmg"
-            name "RubberDuck"
+            name "Rubber Duck"
             desc "macOS menu bar dictation app using OpenAI transcription"
             homepage "https://github.com/mblode/rubber-duck"
 
             depends_on macos: ">= :sequoia"
             auto_updates true
 
-            app "RubberDuck.app"
+            app "Rubber Duck.app"
 
             zap trash: [
               "~/Library/Preferences/co.blode.rubber-duck.plist",

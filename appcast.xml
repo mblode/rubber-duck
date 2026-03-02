@@ -3,9 +3,9 @@
     xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle"
     xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
-    <title>RubberDuck</title>
+    <title>Rubber Duck</title>
     <link>https://github.com/mblode/rubber-duck</link>
-    <description>RubberDuck updates</description>
+    <description>Rubber Duck updates</description>
     <language>en</language>
     <item>
       <title>Version 0.1.11</title>

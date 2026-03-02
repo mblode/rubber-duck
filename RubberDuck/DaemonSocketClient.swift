@@ -27,7 +27,7 @@ final class DaemonSocketClient {
         var errorDescription: String? {
             switch self {
             case .daemonUnavailable:
-                return "RubberDuck daemon is not running. Start it with `duck [path]`."
+                return "Rubber Duck daemon is not running. Start it with `duck [path]`."
             case .timeout:
                 return "Daemon request timed out."
             case .requestFailed(let message):

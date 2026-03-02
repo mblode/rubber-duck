@@ -1,19 +1,19 @@
-# RubberDuck
+# Rubber Duck
 
 macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + KeyboardShortcuts SPM.
 
 ## Commands
 
 - `open RubberDuck.xcodeproj` — Open in Xcode
-- `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build` — Build from CLI
-- `xcodebuild -scheme Commandment -configuration Release build -derivedDataPath /tmp/rubber-duck-build` — Release build
-- `xcodebuild -scheme Commandment -configuration Debug -destination 'platform=macOS' test -derivedDataPath /tmp/rubber-duck-build` — Run tests
+- `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build` — Build from CLI
+- `xcodebuild -scheme Commandment -configuration Release -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build` — Release build
+- `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' test -derivedDataPath /tmp/rubber-duck-build` — Run tests
 - `make unused` — Find unused Swift declarations (Periphery — Knip equivalent for Swift)
-- `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build && (pkill -x RubberDuck || true) && rsync -a --delete /tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app/ /Applications/RubberDuck.app/ && open /Applications/RubberDuck.app` — Build, replace installed app, relaunch (avoids stale bundle)
+- `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build && (pkill -x "Rubber Duck" || true) && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" && open "/Applications/Rubber Duck.app"` — Build, replace installed app, relaunch (avoids stale bundle)
 
 ### Rebuild Shortcuts
 
-- `xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build && (pkill -x RubberDuck || true) && rsync -a --delete /tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app/ /Applications/RubberDuck.app/ && open /Applications/RubberDuck.app` — Rebuild and replace the installed macOS app
+- `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build && (pkill -x "Rubber Duck" || true) && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" && open "/Applications/Rubber Duck.app"` — Rebuild and replace the installed macOS app
 - `cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" || true)` — Rebuild/relink CLI and force daemon restart so `duck` uses latest code
 
 ### CLI Commands (`cli/`)
@@ -45,7 +45,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 
 - Audio is streamed at 24 kHz PCM16 mono to the OpenAI Realtime API
 - The app runs as a menu bar agent (`LSUIElement = true`) — no dock icon or main window. Do not add a `WindowGroup` or `DocumentGroup` scene
-- If UI changes do not appear, you are likely running a stale bundle. Always replace `/Applications/RubberDuck.app` from `/tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app` and relaunch from `/Applications`.
+- If UI changes do not appear, you are likely running a stale bundle. Always replace `/Applications/Rubber Duck.app` from `/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app` and relaunch from `/Applications`.
 - Settings window opening is centralized in `SettingsWindowController.shared.show()`; do not use responder-chain selectors like `showSettingsWindow:` for new code paths
 - Setup checklist state is stored in `AppConfigManager` (`setupGuideDismissed`) and surfaced in menu + Settings > Setup; keep skip/reset behavior non-blocking
 - HotkeyManager is `@MainActor` — removing this will cause KeyboardShortcuts crashes on background threads

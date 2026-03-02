@@ -227,17 +227,17 @@ function addAppCheck(checks: DoctorCheck[], context: HealthCheckContext): void {
     return;
   }
   try {
-    execSync("pgrep -x RubberDuck", { encoding: "utf-8" });
+    execSync('pgrep -x "Rubber Duck"', { encoding: "utf-8" });
     checks.push({
       name: "app",
       status: "ok",
-      message: "RubberDuck.app running",
+      message: "Rubber Duck.app running",
     });
   } catch {
     checks.push({
       name: "app",
       status: "warn",
-      message: "RubberDuck.app not running (voice features unavailable)",
+      message: "Rubber Duck.app not running (voice features unavailable)",
     });
   }
 }

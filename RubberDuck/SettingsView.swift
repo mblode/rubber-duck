@@ -11,15 +11,9 @@ enum VoiceAgentVoice: String, CaseIterable, Identifiable {
 }
 
 enum VoiceAgentModel: String, CaseIterable, Identifiable {
-    case realtimeMini = "gpt-realtime-mini"
     case realtime = "gpt-realtime-1.5"
     var id: String { rawValue }
-    var displayName: String {
-        switch self {
-        case .realtimeMini: return "GPT Realtime Mini"
-        case .realtime: return "GPT Realtime 1.5"
-        }
-    }
+    var displayName: String { "GPT Realtime 1.5" }
 }
 
 struct SettingsView: View {

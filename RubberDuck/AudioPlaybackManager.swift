@@ -24,6 +24,7 @@ class AudioPlaybackManager: ObservableObject {
     @Published var isPlaying = false
 
     private weak var audioManager: AudioManager?
+    private let referenceBuffer: PlaybackReferenceBuffer?
     private let playbackQueue = DispatchQueue(label: "co.blode.rubber-duck.playback")
     private var fallbackAudioEngine: AVAudioEngine?
     private var fallbackPlayerNode: AVAudioPlayerNode?
@@ -40,8 +41,9 @@ class AudioPlaybackManager: ObservableObject {
     private var droppedChunksBeforeReady = 0
     private var itemSamples: [AudioPlaybackItemKey: AudioPlaybackItemSamples] = [:]
 
-    init(audioManager: AudioManager) {
+    init(audioManager: AudioManager, referenceBuffer: PlaybackReferenceBuffer? = nil) {
         self.audioManager = audioManager
+        self.referenceBuffer = referenceBuffer
     }
 
     // MARK: - Playback Control
@@ -89,6 +91,7 @@ class AudioPlaybackManager: ObservableObject {
             guard let self = self else { return }
             self.audioManager?.playerNode?.stop()
             self.fallbackPlayerNode?.stop()
+            self.referenceBuffer?.reset()
             self.teardownFallbackPlaybackEngine()
             self.resetPlaybackMetrics()
             DispatchQueue.main.async {
@@ -128,6 +131,7 @@ class AudioPlaybackManager: ObservableObject {
             // Stop the player node but do NOT tear down the shared engine.
             self.audioManager?.playerNode?.stop()
             self.fallbackPlayerNode?.stop()
+            self.referenceBuffer?.reset()
             self.teardownFallbackPlaybackEngine()
             self.resetPlaybackMetrics()
             DispatchQueue.main.async {
@@ -244,6 +248,10 @@ class AudioPlaybackManager: ObservableObject {
             DispatchQueue.main.async {
                 self.isPlaying = true
             }
+
+            // Write to the AEC reference buffer so AudioManager can subtract this audio from capture.
+            let scheduledAt = mach_absolute_time()
+            self.referenceBuffer?.write(int16Data: data, scheduledAt: scheduledAt)
 
             playerNode.scheduleBuffer(buffer) { [weak self] in
                 self?.playbackQueue.async {

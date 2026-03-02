@@ -9,11 +9,6 @@ private struct RealtimeClientError: LocalizedError {
 
 @MainActor
 class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
-    private enum StartupConfigProfile {
-        case full
-        case minimalRetry
-    }
-
     @Published var connectionState: RealtimeConnectionState = .disconnected
 
     weak var delegate: RealtimeClientDelegate?
@@ -79,14 +74,6 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
 
     // Protect against stale callbacks from older sockets
     private var connectionGeneration = 0
-
-    private var shouldUseMinimalStartupConfigFallback: Bool {
-        RealtimeReconnectionPolicy.shouldUseMinimalStartupConfigFallback(reconnectAttempt: reconnectAttempt)
-    }
-
-    private var startupConfigProfile: StartupConfigProfile {
-        shouldUseMinimalStartupConfigFallback ? .minimalRetry : .full
-    }
 
     private var effectiveModelForConnectionAttempt: String {
         RealtimeReconnectionPolicy.resolvedModelForConnectionAttempt(configuredModel: model, reconnectAttempt: reconnectAttempt)
@@ -367,18 +354,15 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
         delegate?.realtimeClientDidBecomeReady(self)
     }
 
-    private func baseSessionConfig(profile: StartupConfigProfile) -> [String: Any] {
-        let includeInstructions = profile == .full
+    private func baseSessionConfig() -> [String: Any] {
         let audioFormat: [String: Any] = [
             "type": "audio/pcm",
             "rate": Int(AudioConstants.sampleRate)
         ]
         let turnDetection: [String: Any] = [
-            "type": "server_vad",
-            "threshold": NSDecimalNumber(string: "0.72"),
-            "prefix_padding_ms": 300,
-            "silence_duration_ms": 800,
-            "interrupt_response": false,
+            "type": "semantic_vad",
+            "eagerness": "auto",
+            "interrupt_response": true,
             "create_response": true
         ]
         let inputAudio: [String: Any] = [
@@ -401,7 +385,7 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             ] as [String: Any]
         ]
 
-        if includeInstructions, !instructions.isEmpty {
+        if !instructions.isEmpty {
             sessionConfig["instructions"] = instructions
         }
 
@@ -465,21 +449,12 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
 
         startupSessionUpdateSent = true
         toolsIncludedInStartupConfig = !tools.isEmpty
-        let profile = startupConfigProfile
         let event: [String: Any] = [
             "type": "session.update",
-            "session": baseSessionConfig(profile: profile)
+            "session": baseSessionConfig()
         ]
         sendEvent(event, context: "session.update.startup")
-
-        switch profile {
-        case .full:
-            logInfo("RealtimeClient[\(connectionTraceID)]: Sent startup session configuration")
-        case .minimalRetry:
-            logInfo(
-                "RealtimeClient[\(connectionTraceID)]: Sent minimal retry startup session configuration (attempt \(reconnectAttempt))"
-            )
-        }
+        logInfo("RealtimeClient[\(connectionTraceID)]: Sent startup session configuration")
     }
 
     private func sendToolsSessionConfigIfNeeded() {
@@ -838,7 +813,7 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             let delay = pow(2.0, Double(reconnectAttempt - 1)) // 1s, 2s, 4s
             setConnectionState(.reconnecting)
             logInfo(
-                "RealtimeClient[\(connectionTraceID)]: Reconnecting in \(Int(delay))s (attempt \(reconnectAttempt)/\(maxReconnectAttempts), disposition=\(dispositionForDisconnect?.rawValue ?? "transport"), next_model=\(effectiveModelForConnectionAttempt), startup_profile=\(shouldUseMinimalStartupConfigFallback ? "minimal_retry" : "full"))"
+                "RealtimeClient[\(connectionTraceID)]: Reconnecting in \(Int(delay))s (attempt \(reconnectAttempt)/\(maxReconnectAttempts), disposition=\(dispositionForDisconnect?.rawValue ?? "transport"), next_model=\(effectiveModelForConnectionAttempt))"
             )
 
             webSocketTask?.cancel(with: .goingAway, reason: nil)

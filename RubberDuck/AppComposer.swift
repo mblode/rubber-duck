@@ -23,13 +23,15 @@ enum AppComposer {
     private static let didRevealSettingsOnFirstLaunchKey = "didRevealSettingsOnFirstLaunch"
 
     static func buildManagers() -> AppManagers {
-        logInfo("RubberDuckApp: Initializing")
+        logInfo("Rubber Duck: Initializing")
 
         let audio = AudioManager()
+        let aecBuffer = PlaybackReferenceBuffer()
+        audio.referenceBuffer = aecBuffer
         let transcription = AppConfigManager()
         let hotkey = HotkeyManager()
         let updater = UpdateManager()
-        let playback = AudioPlaybackManager(audioManager: audio)
+        let playback = AudioPlaybackManager(audioManager: audio, referenceBuffer: aecBuffer)
         let rtClient = RealtimeClient()
         let workspaces = WorkspaceManager()
         let daemonClient = DaemonSocketClient(socketPath: AppSupportPaths.daemonSocketURL().path)
@@ -87,9 +89,9 @@ enum AppComposer {
         Task {
             await daemonClient.connect()
             if daemonClient.isConnected {
-                logInfo("RubberDuckApp: Connected to CLI daemon")
+                logInfo("Rubber Duck: Connected to CLI daemon")
             } else {
-                logDebug("RubberDuckApp: CLI daemon not running (voice tools will execute locally)")
+                logDebug("Rubber Duck: CLI daemon not running (voice tools will execute locally)")
             }
         }
 
@@ -128,7 +130,7 @@ enum AppComposer {
 
         defaults.set(true, forKey: didRevealSettingsOnFirstLaunchKey)
         DispatchQueue.main.async {
-            logInfo("RubberDuckApp: Revealing Settings on first launch for menu bar discoverability")
+            logInfo("Rubber Duck: Revealing Settings on first launch for menu bar discoverability")
             SettingsWindowController.shared.show()
         }
     }

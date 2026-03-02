@@ -72,7 +72,7 @@ colors.ts               # styleText wrappers respecting NO_COLOR
 ## Data Flow
 
 ```
-RubberDuck.app (voice) ◄──► daemon (Unix socket) ──► Pi (RPC subprocess)
+Rubber Duck.app (voice) ◄──► daemon (Unix socket) ──► Pi (RPC subprocess)
        │ voice_connect              │
        │ voice_tool_call            ├── MetadataStore (metadata.json)
        │ voice_state                ├── EventBus (pub/sub per session)

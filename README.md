@@ -1,14 +1,14 @@
 <p align="center">
-  <img src="rubber-duck-macOS-Default-1024x1024@1x.png" width="128" alt="RubberDuck app icon">
+  <img src="rubber-duck-macOS-Default-1024x1024@1x.png" width="128" alt="Rubber Duck app icon">
 </p>
 
-<h1 align="center">RubberDuck</h1>
+<h1 align="center">Rubber Duck</h1>
 
 <p align="center">
   Open-source voice-first coding companion for macOS. Bring your own OpenAI API key.
 </p>
 
-A [rubber duck debugger](docs/rubber-duck-debugging.md) that talks back. Speak to your codebase through a menu bar app, hear answers spoken back in real time, and watch every tool call, diff, and command output scroll through your terminal. Two pieces work together: **RubberDuck.app** (menu bar — mic, speaker, session manager) and the **`duck` CLI** (attach a repo, follow live streams, send typed messages).
+A [rubber duck debugger](docs/rubber-duck-debugging.md) that talks back. Speak to your codebase through a menu bar app, hear answers spoken back in real time, and watch every tool call, diff, and command output scroll through your terminal. Two pieces work together: **Rubber Duck.app** (menu bar — mic, speaker, session manager) and the **`duck` CLI** (attach a repo, follow live streams, send typed messages).
 
 ## Features
 
@@ -112,10 +112,10 @@ Options: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`.
 ### Build and relaunch the app
 
 ```bash
-xcodebuild -scheme Commandment -configuration Debug build -derivedDataPath /tmp/rubber-duck-build \
-  && (pkill -x RubberDuck || true) \
-  && rsync -a --delete /tmp/rubber-duck-build/Build/Products/Debug/RubberDuck.app/ /Applications/RubberDuck.app/ \
-  && open /Applications/RubberDuck.app
+xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build \
+  && (pkill -x "Rubber Duck" || true) \
+  && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" \
+  && open "/Applications/Rubber Duck.app"
 ```
 
 ### Rebuild the CLI and restart daemon
@@ -128,7 +128,7 @@ cd cli && npm run build && npm link && (pkill -f "duck-daemon|dist/daemon.js" ||
 
 ```bash
 # Swift unit tests
-xcodebuild -scheme Commandment -configuration Debug -destination 'platform=macOS' test \
+xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' test \
   -derivedDataPath /tmp/rubber-duck-build
 
 # CLI unit tests

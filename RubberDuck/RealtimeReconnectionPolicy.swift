@@ -14,10 +14,6 @@ struct RealtimeReconnectionPolicy {
         return reconnectAttempt < maxReconnectAttempts
     }
 
-    static func shouldUseMinimalStartupConfigFallback(reconnectAttempt: Int) -> Bool {
-        reconnectAttempt >= 1
-    }
-
     static func resolvedModelForConnectionAttempt(configuredModel: String, reconnectAttempt: Int) -> String {
         _ = reconnectAttempt
         return configuredModel

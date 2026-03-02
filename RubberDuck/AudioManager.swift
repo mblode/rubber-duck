@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import AppKit
 import os
+import Accelerate
 
 enum AudioConstants {
     static let sampleRate: Double = 24000
@@ -132,6 +133,44 @@ class AudioManager: NSObject, ObservableObject {
     private let isInputMutedFlag = OSAllocatedUnfairLock(initialState: false)
     private let isCaptureStartupFlag = OSAllocatedUnfairLock(initialState: false)
     private let isEchoCancellationActiveFlag = OSAllocatedUnfairLock(initialState: false)
+
+    // MARK: - Software AEC
+
+    /// Reference buffer populated by AudioPlaybackManager with every PCM chunk it plays.
+    /// AudioManager reads from this buffer in the capture tap to subtract speaker output.
+    var referenceBuffer: PlaybackReferenceBuffer?
+
+    /// Pre-allocated scratch buffer for AEC subtraction — avoids real-time heap allocation.
+    private var aecScratch = [Float](repeating: 0, count: Int(AudioConstants.captureBufferSize))
+
+    /// Estimated round-trip delay (speaker schedule → microphone capture) in samples.
+    /// Loaded from UserDefaults on init, falls back to 1440 (60 ms at 24 kHz).
+    private var estimatedDelayInSamples: Int = 1440
+
+    /// Estimated bleedthrough gain (how much of the reference signal leaks into capture).
+    /// Loaded from UserDefaults, updated adaptively during playback.
+    private var echoCancellationGain: Float = 0.50
+
+    /// mach_timebase_info for converting mach_absolute_time ticks to seconds.
+    private var machTimebaseInfo = mach_timebase_info_data_t(numer: 0, denom: 0)
+
+    /// Wall-clock time of the last user speech detection event.
+    /// Used to suppress gain calibration during actual user speech.
+    private var lastSpeechDetectedAt: Date = .distantPast
+
+    /// Throttle: last time delay estimate was persisted to UserDefaults.
+    private var lastDelayPersistAt: Date = .distantPast
+
+    /// Throttle: last time gain was persisted to UserDefaults.
+    private var lastGainPersistAt: Date = .distantPast
+
+    /// Whether the last AEC subtraction succeeded (reference data available).
+    private var lastAECReadSucceeded = false
+
+    /// @Published software AEC active flag (true when standard mode + referenceBuffer non-nil).
+    @Published private(set) var isSoftwareAECActive: Bool = false
+    private let isSoftwareAECActiveFlag = OSAllocatedUnfairLock(initialState: false)
+
     private let startupFrameSemaphoreLock = NSLock()
     private var startupFrameSemaphore: DispatchSemaphore?
     private var lastSetupError: NSError?
@@ -151,6 +190,17 @@ class AudioManager: NSObject, ObservableObject {
         super.init()
         audioQueue.setSpecific(key: audioQueueKey, value: ())
         refreshMicrophonePermissionState()
+
+        // Load persisted AEC calibration values.
+        let savedDelay = UserDefaults.standard.integer(forKey: "aecDelayEstimateSamples")
+        if savedDelay >= 480 && savedDelay <= 4800 {
+            estimatedDelayInSamples = savedDelay
+        }
+        let savedGain = UserDefaults.standard.float(forKey: "aecEchoCancellationGain")
+        if savedGain >= 0.01 && savedGain <= 5.0 {
+            echoCancellationGain = savedGain
+        }
+        mach_timebase_info(&machTimebaseInfo)
     }
 
     var isCaptureEngineRunning: Bool {
@@ -384,6 +434,43 @@ class AudioManager: NSObject, ObservableObject {
                 let convertedBuffer = self.convertToTargetFormat(buffer: buffer, inputFormat: captureFormat, targetFormat: whisperFormat)
                 guard let finalBuffer = convertedBuffer else { return }
 
+                // Software AEC: subtract known playback reference from captured signal.
+                // Must run after format conversion (signal is now Float32 mono 24 kHz)
+                // and before the noise gate (gate must see the echo-cancelled signal).
+                if let ref = self.referenceBuffer,
+                   let floatData = finalBuffer.floatChannelData {
+                    let frameCount = Int(finalBuffer.frameLength)
+
+                    // Step 1: Read reference into scratch (lock-free, no allocation).
+                    let didRead = self.aecScratch.withUnsafeMutableBufferPointer { ptr in
+                        ref.read(into: ptr.baseAddress!, frameCount: frameCount,
+                                 delaySamples: self.estimatedDelayInSamples)
+                    }
+                    self.lastAECReadSucceeded = didRead
+
+                    if didRead {
+                        // Step 2: Calibrate gain using the ORIGINAL capture (before subtraction)
+                        // so we measure true bleedthrough ratio, not the residual.
+                        self.aecScratch.withUnsafeBufferPointer { refPtr in
+                            self.updateEchoCancellationGain(
+                                captureSamples: floatData[0],
+                                referenceSamples: refPtr.baseAddress!,
+                                frameCount: frameCount
+                            )
+                        }
+
+                        // Step 3: Apply subtraction in place: capture -= reference * gain.
+                        var negGain = -self.echoCancellationGain
+                        vDSP_vsma(self.aecScratch, 1, &negGain,
+                                  floatData[0], 1, floatData[0], 1, vDSP_Length(frameCount))
+                    }
+                }
+
+                // Update delay estimate using the capture host time.
+                if time.isSampleTimeValid {
+                    self.updateDelayEstimate(captureHostTime: time.hostTime)
+                }
+
                 // Software mute: zero-fill during model playback to prevent echo on
                 // devices where VoiceProcessingIO is unavailable.
                 if self.isInputMutedFlag.withLock({ $0 }) {
@@ -399,12 +486,29 @@ class AudioManager: NSObject, ObservableObject {
                 let now = Date()
                 let rms = self.rmsLevel(of: finalBuffer)
                 let isEchoCancellationActive = self.isEchoCancellationActiveFlag.withLock { $0 }
-                let activeNoiseGateThreshold = isEchoCancellationActive
+                let isSoftwareAECActive = self.isSoftwareAECActiveFlag.withLock { $0 }
+                let anyAECActive = isEchoCancellationActive || isSoftwareAECActive
+                var activeNoiseGateThreshold = anyAECActive
                     ? AudioConstants.noiseGateThreshold
                     : AudioConstants.noiseGateThresholdWithoutAEC
-                let activeNoiseGateHoldTime = isEchoCancellationActive
+                let activeNoiseGateHoldTime = anyAECActive
                     ? AudioConstants.noiseGateHoldTime
                     : AudioConstants.noiseGateHoldTimeWithoutAEC
+
+                // Proportional echo gate: when reference was read this frame, raise the gate
+                // threshold to 1.5× reference RMS. Residual echo (always ≤ refRMS × gain_error)
+                // can't pass, but user speech louder than 1.5× the echo still triggers barge-in.
+                if self.lastAECReadSucceeded {
+                    let frameCount = Int(finalBuffer.frameLength)
+                    var refRMS: Float = 0
+                    self.aecScratch.withUnsafeBufferPointer { ptr in
+                        vDSP_rmsqv(ptr.baseAddress!, 1, &refRMS, vDSP_Length(frameCount))
+                    }
+                    let proportionalThreshold = refRMS * 1.5
+                    if proportionalThreshold > activeNoiseGateThreshold {
+                        activeNoiseGateThreshold = proportionalThreshold
+                    }
+                }
 
                 if rms >= activeNoiseGateThreshold {
                     self.lastAboveThresholdTime = now
@@ -627,9 +731,22 @@ class AudioManager: NSObject, ObservableObject {
                                 self.isStreaming = true
                                 self.isEchoCancellationActive = aecActive
                             }
+                            let softwareAECEnabled = !aecActive && self.referenceBuffer != nil
+                            self.isSoftwareAECActiveFlag.withLock { $0 = softwareAECEnabled }
+                            DispatchQueue.main.async {
+                                self.isSoftwareAECActive = softwareAECEnabled
+                            }
 
+                            let aecSummary: String
+                            if aecActive {
+                                aecSummary = "hardware-AEC=on, software-AEC=off"
+                            } else if softwareAECEnabled {
+                                aecSummary = "hardware-AEC=off, software-AEC=on (gain=\(String(format: "%.2f", self.echoCancellationGain)), delay=\(self.estimatedDelayInSamples)smp)"
+                            } else {
+                                aecSummary = "hardware-AEC=off, software-AEC=off (no reference buffer)"
+                            }
                             logInfo(
-                                "AudioManager: Streaming started successfully (mode=\(step.mode.rawValue), graph=\(graphMode), attempt=\(attempt))"
+                                "AudioManager: Streaming started successfully (mode=\(step.mode.rawValue), graph=\(graphMode), attempt=\(attempt), \(aecSummary))"
                             )
                             return true
                         } catch {
@@ -719,6 +836,10 @@ class AudioManager: NSObject, ObservableObject {
         isStreaming = false
         isEchoCancellationActive = false
         isEchoCancellationActiveFlag.withLock { $0 = false }
+        isSoftwareAECActiveFlag.withLock { $0 = false }
+        DispatchQueue.main.async {
+            self.isSoftwareAECActive = false
+        }
 
         let teardown = { [weak self] in
             self?.isStreamingFlag.withLock { $0 = false }
@@ -734,5 +855,97 @@ class AudioManager: NSObject, ObservableObject {
         }
 
         streamingChunkCallback = nil
+    }
+
+    // MARK: - Software AEC
+
+    /// Notify that user speech was detected. Suppresses AEC gain calibration for 0.5 s.
+    /// Called from VoiceSessionCoordinator.realtimeClientDidDetectSpeechStarted().
+    func notifySpeechDetected() {
+        lastSpeechDetectedAt = Date()
+    }
+
+    /// Convert mach_absolute_time ticks to seconds using the stored timebase info.
+    private func machTicksToSeconds(_ ticks: UInt64) -> Double {
+        guard machTimebaseInfo.denom != 0 else { return 0 }
+        return Double(ticks) * Double(machTimebaseInfo.numer) / Double(machTimebaseInfo.denom) / 1_000_000_000.0
+    }
+
+    /// Update the estimated round-trip delay using the gap between the latest playback
+    /// schedule timestamp and the current capture host time.
+    private func updateDelayEstimate(captureHostTime: UInt64) {
+        guard let ref = referenceBuffer, captureHostTime > 0 else { return }
+        let refTimestamp = ref.latestScheduledAt()
+        guard refTimestamp > 0, captureHostTime > refTimestamp else { return }
+
+        let deltaSecs = machTicksToSeconds(captureHostTime - refTimestamp)
+        let measured = Int(deltaSecs * AudioConstants.sampleRate)
+        guard measured >= 480 && measured <= 4800 else { return }
+
+        // Exponential moving average with slow alpha for stability.
+        let alpha: Float = 0.05
+        estimatedDelayInSamples = Int(Float(estimatedDelayInSamples) * (1 - alpha) + Float(measured) * alpha)
+
+        // Persist at most once per 10 seconds.
+        if Date().timeIntervalSince(lastDelayPersistAt) > 10.0 {
+            UserDefaults.standard.set(estimatedDelayInSamples, forKey: "aecDelayEstimateSamples")
+            lastDelayPersistAt = Date()
+        }
+    }
+
+    /// Apply software echo cancellation: subtract the scaled, delayed reference signal
+    /// from the captured microphone signal in place.
+    ///
+    /// This is `internal` (not `private`) so unit tests can call it directly.
+    ///
+    /// - Returns: `true` if the reference read succeeded and subtraction was applied.
+    @discardableResult
+    func applyEchoSubtraction(
+        to samples: UnsafeMutablePointer<Float>,
+        frameCount: Int,
+        reference: PlaybackReferenceBuffer,
+        delaySamples: Int,
+        gain: Float,
+        scratch: inout [Float]
+    ) -> Bool {
+        guard frameCount > 0, frameCount <= scratch.count else { return false }
+
+        let didRead = scratch.withUnsafeMutableBufferPointer { ptr in
+            reference.read(into: ptr.baseAddress!, frameCount: frameCount, delaySamples: delaySamples)
+        }
+        guard didRead else { return false }
+
+        // In-place: samples[i] -= scratch[i] * gain   (vDSP SIMD accelerated)
+        var negGain = -gain
+        vDSP_vsma(scratch, 1, &negGain, samples, 1, samples, 1, vDSP_Length(frameCount))
+        return true
+    }
+
+    /// Adaptively update the echo cancellation gain based on the current capture RMS
+    /// vs. the reference RMS. Only runs when hardware AEC is off and no user speech
+    /// has been detected recently.
+    private func updateEchoCancellationGain(captureSamples: UnsafePointer<Float>,
+                                             referenceSamples: UnsafePointer<Float>,
+                                             frameCount: Int) {
+        guard !isEchoCancellationActiveFlag.withLock({ $0 }) else { return }
+        guard Date().timeIntervalSince(lastSpeechDetectedAt) > 0.5 else { return }
+        guard frameCount > 0 else { return }
+
+        var captureRMS: Float = 0
+        var refRMS: Float = 0
+        vDSP_rmsqv(captureSamples, 1, &captureRMS, vDSP_Length(frameCount))
+        vDSP_rmsqv(referenceSamples, 1, &refRMS, vDSP_Length(frameCount))
+
+        guard captureRMS > 0.001, refRMS > 0.001 else { return }
+
+        let measuredGain = captureRMS / refRMS
+        let alpha: Float = 0.05
+        echoCancellationGain = echoCancellationGain * (1 - alpha) + measuredGain * alpha
+        echoCancellationGain = max(0.01, min(5.0, echoCancellationGain))
+
+        if Date().timeIntervalSince(lastGainPersistAt) > 10.0 {
+            UserDefaults.standard.set(echoCancellationGain, forKey: "aecEchoCancellationGain")
+            lastGainPersistAt = Date()
+        }
     }
 }

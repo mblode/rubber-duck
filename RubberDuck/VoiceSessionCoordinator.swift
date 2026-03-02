@@ -19,9 +19,11 @@ protocol VoiceAudioManaging: AnyObject {
     var isMicrophonePermissionDenied: Bool { get }
     var muteInput: Bool { get set }
     var isEchoCancellationActive: Bool { get }
+    var isSoftwareAECActive: Bool { get }
 
     func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)?)
     func stopStreaming()
+    func notifySpeechDetected()
 }
 
 extension VoiceAudioManaging {
@@ -30,6 +32,8 @@ extension VoiceAudioManaging {
         set {}
     }
     var isEchoCancellationActive: Bool { false }
+    var isSoftwareAECActive: Bool { false }
+    func notifySpeechDetected() {}
 }
 
 extension AudioManager: VoiceAudioManaging {}
@@ -87,9 +91,15 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     private var inputUnmuteWorkItem: DispatchWorkItem?
     private let unmutePlaybackPollIntervalSeconds: TimeInterval = 0.08
     private let speechStartGuardAfterAssistantAudioSecondsWithAEC: TimeInterval = 0.22
-    private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 1.0
-    private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 6.0
+    private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 0.45
+    private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 0.9
+    private let minimumBargeInConfirmationDelayWithoutAECSeconds: TimeInterval = 0.55
+    private let speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC: TimeInterval = 0.18
     private var pendingListeningTransitionWorkItem: DispatchWorkItem?
+
+    private var isAnyAECActive: Bool {
+        audioManager.isEchoCancellationActive || audioManager.isSoftwareAECActive
+    }
     private var suppressAssistantAudioUntilNextResponseCreated = false
     private var didHandleTypedResponseDoneForCurrentResponse = false
 
@@ -280,13 +290,16 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
-        guard bargeInConfirmationDelaySeconds > 0 else {
+        let confirmationDelay = effectiveBargeInConfirmationDelaySeconds()
+        guard confirmationDelay > 0 else {
             handleBargeIn()
             return
         }
 
-        let delayMs = Int(bargeInConfirmationDelaySeconds * 1000)
-        logDebug("VoiceSessionCoordinator: Speech started during playback, confirming for \(delayMs)ms before barge-in")
+        let delayMs = Int(confirmationDelay * 1000)
+        logDebug(
+            "VoiceSessionCoordinator: Speech started during playback, confirming for \(delayMs)ms before barge-in (aec_active=\(audioManager.isEchoCancellationActive))"
+        )
 
         let workItem = DispatchWorkItem { [weak self] in
             guard let self else { return }
@@ -296,7 +309,14 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
 
         pendingBargeInWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + bargeInConfirmationDelaySeconds, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + confirmationDelay, execute: workItem)
+    }
+
+    private func effectiveBargeInConfirmationDelaySeconds() -> TimeInterval {
+        if isAnyAECActive {
+            return bargeInConfirmationDelaySeconds
+        }
+        return max(bargeInConfirmationDelaySeconds, minimumBargeInConfirmationDelayWithoutAECSeconds)
     }
 
     private func handleBargeIn() {
@@ -319,12 +339,11 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             )
         }
 
-        if autoAbortOnBargeIn {
-            // Ignore straggling output_audio deltas from the interrupted response
-            // until the server declares a new response boundary.
-            suppressAssistantAudioUntilNextResponseCreated = true
-            realtimeClient.cancelResponse()
+        // Ignore straggling output_audio deltas from the interrupted response
+        // until the server declares a new response boundary.
+        suppressAssistantAudioUntilNextResponseCreated = true
 
+        if autoAbortOnBargeIn {
             if let itemId = currentAudioItemId,
                let contentIndex = currentAudioContentIndex {
                 let clampedAudioEndMs: Int
@@ -349,10 +368,10 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                     sendCancel: false
                 )
                 logDebug(
-                    "VoiceSessionCoordinator: Sent cancel+truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
+                    "VoiceSessionCoordinator: Sent truncate for item \(itemId), audioEnd: \(clampedAudioEndMs)ms, itemScheduled=\(snapshot.itemScheduledSamples), itemUnplayed=\(snapshot.itemUnplayedSamples)"
                 )
             } else {
-                logDebug("VoiceSessionCoordinator: Sent response.cancel without truncate (no active audio item metadata)")
+                logDebug("VoiceSessionCoordinator: No active audio item metadata for truncate; relying on server interrupt")
             }
         } else if !autoAbortOnBargeIn {
             logInfo("VoiceSessionCoordinator: Auto-abort on barge-in disabled, skipping truncate")
@@ -385,17 +404,17 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         if state == .speaking {
             cancelInputUnmute()
             lastAssistantPlaybackEndedAt = nil
-            // Keep barge-in available when hardware AEC is active; hard-mute otherwise.
-            audioManager.muteInput = !audioManager.isEchoCancellationActive
+            // Keep barge-in available in degraded no-AEC mode; rely on guard windows
+            // and confirmation delay to reject speaker bleed.
+            audioManager.muteInput = false
         } else if wasLeavingSpeaking {
             lastAssistantPlaybackEndedAt = Date()
             if state == .idle {
                 cancelInputUnmute()
                 audioManager.muteInput = false
             } else {
-                // Without AEC the mic picks up speaker reverb; use a longer tail to prevent echo
-                let unmuteDelay: TimeInterval = audioManager.isEchoCancellationActive ? 0.4 : 1.8
-                let maxAdditionalDelay: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 5.0
+                let unmuteDelay: TimeInterval = isAnyAECActive ? 0.4 : 0.1
+                let maxAdditionalDelay: TimeInterval = isAnyAECActive ? 0.8 : 0.5
                 let suppressionUntil = Date().addingTimeInterval(unmuteDelay + maxAdditionalDelay)
                 if suppressionUntil > vadSuppressedUntil {
                     vadSuppressedUntil = suppressionUntil
@@ -454,9 +473,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
-        let baseMaxWait: TimeInterval = audioManager.isEchoCancellationActive ? 0.8 : 3.0
-        let cappedMaxWait: TimeInterval = audioManager.isEchoCancellationActive ? 8.0 : 20.0
-        let safetyMargin: TimeInterval = audioManager.isEchoCancellationActive ? 0.4 : 0.8
+        let baseMaxWait: TimeInterval = isAnyAECActive ? 0.8 : 3.0
+        let cappedMaxWait: TimeInterval = isAnyAECActive ? 8.0 : 20.0
+        let safetyMargin: TimeInterval = isAnyAECActive ? 0.4 : 0.8
 
         var maxWait = baseMaxWait
         if let manager = playbackManager as? AudioPlaybackManager {
@@ -815,19 +834,14 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
 
-        if sessionState == .speaking, !audioManager.isEchoCancellationActive {
-            logDebug("VoiceSessionCoordinator: Ignoring speech_started during playback without AEC")
-            return
-        }
-
-        if !audioManager.isEchoCancellationActive,
+        if !isAnyAECActive,
            let lastAssistantAudioDeltaAt,
            now.timeIntervalSince(lastAssistantAudioDeltaAt) < speechStartGuardAfterAssistantAudioSecondsWithoutAEC {
             logDebug("VoiceSessionCoordinator: Ignoring speech_started during no-AEC assistant-audio guard window")
             return
         }
 
-        if !audioManager.isEchoCancellationActive,
+        if !isAnyAECActive,
            let lastAssistantPlaybackEndedAt,
            now.timeIntervalSince(lastAssistantPlaybackEndedAt) < postPlaybackSpeechSuppressionWithoutAECSeconds {
             logDebug("VoiceSessionCoordinator: Ignoring speech_started during no-AEC post-playback suppression")
@@ -835,9 +849,9 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
 
         if sessionState == .speaking,
-           audioManager.isEchoCancellationActive,
+           isAnyAECActive,
            let lastAssistantAudioDeltaAt,
-           now.timeIntervalSince(lastAssistantAudioDeltaAt) < speechStartGuardAfterAssistantAudioSecondsWithAEC {
+           now.timeIntervalSince(lastAssistantAudioDeltaAt) < (audioManager.isSoftwareAECActive && !audioManager.isEchoCancellationActive ? speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC : speechStartGuardAfterAssistantAudioSecondsWithAEC) {
             logDebug("VoiceSessionCoordinator: Ignoring speech_started during assistant-audio guard window")
             return
         }
@@ -845,6 +859,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         logDebug("VoiceSessionCoordinator: Speech started")
         appendHistoryEvent(type: .userAudio, metadata: ["state": "speech_started"])
         hasAcceptedSpeechStart = true
+        audioManager.notifySpeechDetected()  // only suppress calibration for confirmed real speech
 
         if sessionState == .speaking {
             scheduleConfirmedBargeIn()

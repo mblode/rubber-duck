@@ -40,33 +40,33 @@ export default async function HomePage() {
   const sizeMb = release?.sizeMb ?? null;
 
   return (
-    <main className="min-h-screen flex items-center justify-center">
-      <div className="flex flex-col items-center text-center gap-5 px-6">
+    <main className="relative flex items-center min-h-dvh bg-[#1c1c1e] overflow-hidden">
+      <div className="flex flex-col items-start text-left pl-[clamp(40px,12vw,180px)] pr-10">
         <div className="w-[84px] h-[84px] rounded-[19px] overflow-hidden shadow-2xl">
           <Image
             src="/app-icon.png"
-            alt="RubberDuck"
+            alt="Rubber Duck"
             width={84}
             height={84}
             priority
           />
         </div>
 
-        <h1 className="text-[28px] font-semibold tracking-tight text-white">
-          RubberDuck
+        <h1 className="text-[38px] font-bold tracking-[-0.035em] leading-none text-[#f5f5f7] mt-6">
+          Rubber Duck
         </h1>
 
-        <p className="text-[15px] text-white/55 -mt-2">
+        <p className="text-[17px] font-medium text-[#c5c5ca] mt-2.5">
           Your voice coding agent, in the menu bar.
         </p>
 
-        <p className="text-[13px] text-white/35 leading-relaxed max-w-[260px]">
+        <p className="text-[14px] font-light leading-[1.7] text-[#98989d] mt-5">
           Voice commands, file tools, AI coding sessions.
           <br />
           One hotkey instead of switching between apps.
         </p>
 
-        <div className="flex items-center gap-3 mt-1">
+        <div className="inline-flex items-center gap-[14px] mt-7">
           <a
             href={downloadUrl}
             className="inline-flex items-center gap-[7px] bg-white text-black text-[13px] font-medium px-4 py-[9px] rounded-[8px] hover:bg-white/90 transition-colors"
@@ -84,17 +84,21 @@ export default async function HomePage() {
             Download for macOS
           </a>
           {sizeMb && (
-            <span className="text-[12px] text-white/30">{sizeMb}</span>
+            <span className="text-[13px] text-[#636366]">{sizeMb}</span>
           )}
         </div>
 
-        <span className="flex items-center gap-[7px] text-[12px] text-white/30">
-          <span className="bg-white/10 text-white/45 px-[6px] py-[2px] rounded-[4px] text-[10px] font-medium uppercase tracking-wide">
+        <span className="text-[12px] text-[#636366] mt-3">
+          <span className="inline-block text-[9px] font-medium text-[#8e8e93] bg-white/[.06] rounded-full px-[7px] py-[2px] tracking-[.06em] uppercase mr-1.5 relative top-[-0.5px]">
             Beta
           </span>
           {version} · Requires macOS Tahoe
         </span>
       </div>
+
+      <p className="absolute bottom-7 left-[clamp(40px,12vw,180px)] text-[12px] text-[#48484a]">
+        © {new Date().getFullYear()} Rubber Duck
+      </p>
     </main>
   );
 }

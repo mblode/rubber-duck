@@ -2,243 +2,186 @@
 // installer/make-dmg-bg.swift
 // Generates installer/dmg-background.png for create-dmg.
 // Run: swift installer/make-dmg-bg.swift
-// Output: installer/dmg-background.png  (1400 × 920 px = 2× retina for 700 × 460 pt window)
+//
+// Canvas: 700 × 460 px (1:1 with the 700 × 460 pt Finder window).
+// Finder icon positions (used in create-dmg flags, origin = top-left):
+//   App icon     → (175, 230)
+//   Applications → (525, 230)
+// CG origin is bottom-left, so CG y = H − finder_y.
+//   App icon CG  → (175, 230)   [symmetric: 460 − 230 = 230]
+//   Apps CG      → (525, 230)
+//
+// Design: clean warm-white, audio waveform as hero, restrained type.
+// Palette: #F7F5F0 warm white · #0B0B12 near-black · #1A7EF0 blue accent
 
 import Foundation
 import AppKit
 import CoreGraphics
 import CoreText
 
-// MARK: - Canvas constants (all in PNG pixels, CG origin = bottom-left)
+// MARK: - Canvas
 
-let W: CGFloat = 1400
-let H: CGFloat = 920
-
-// Finder icon centres (pt) × 2 → PNG pixels
-// App icon at Finder (175, 230) → PNG (350, 460)
-// Applications at  Finder (525, 230) → PNG (1050, 460)
-let appCenter  = CGPoint(x: 350,  y: 460)
-let appsCenter = CGPoint(x: 1050, y: 460)
+let W: CGFloat = 700
+let H: CGFloat = 460
 
 // MARK: - Helpers
 
-func hex(_ h: UInt32, a: CGFloat = 1) -> CGColor {
-    let r = CGFloat((h >> 16) & 0xFF) / 255
-    let g = CGFloat((h >> 8)  & 0xFF) / 255
-    let b = CGFloat( h        & 0xFF) / 255
-    return CGColor(red: r, green: g, blue: b, alpha: a)
+func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, a: CGFloat = 1) -> CGColor {
+    CGColor(red: r / 255, green: g / 255, blue: b / 255, alpha: a)
 }
+func black(_ a: CGFloat) -> CGColor { CGColor(gray: 0, alpha: a) }
 
-func white(_ a: CGFloat) -> CGColor { CGColor(gray: 1, alpha: a) }
+// MARK: - Context
 
-// MARK: - Setup bitmap context
-
-let colorSpace = CGColorSpaceCreateDeviceRGB()
-let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
+let cs = CGColorSpaceCreateDeviceRGB()
+let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
 guard let ctx = CGContext(
-    data: nil,
-    width:  Int(W),
-    height: Int(H),
-    bitsPerComponent: 8,
-    bytesPerRow: 0,
-    space: colorSpace,
-    bitmapInfo: bitmapInfo.rawValue
-) else { fatalError("Could not create CGContext") }
-
+    data: nil, width: Int(W), height: Int(H),
+    bitsPerComponent: 8, bytesPerRow: 0, space: cs, bitmapInfo: bi.rawValue
+) else { fatalError("CGContext failed") }
 ctx.setAllowsAntialiasing(true)
 ctx.setShouldAntialias(true)
 
-// MARK: - Layer 1: Dark gradient background
+// MARK: - Layer 1: Warm white background
 
-let gradColors = [hex(0x0D0D12), hex(0x060608)] as CFArray
-let gradLocations: [CGFloat] = [0, 1]
-guard let gradient = CGGradient(
-    colorsSpace: colorSpace,
-    colors: gradColors,
-    locations: gradLocations
-) else { fatalError("Could not create gradient") }
+// Very slight warm tint — avoids the harshness of pure #FFFFFF
+ctx.setFillColor(rgb(247, 245, 240))
+ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
 
-ctx.drawLinearGradient(
-    gradient,
-    start: CGPoint(x: W / 2, y: H),
-    end:   CGPoint(x: W / 2, y: 0),
-    options: []
-)
-
-// MARK: - Layer 2: Dot grid
-
-let dotSpacing: CGFloat = 40
-let dotRadius:  CGFloat = 1.2
-ctx.setFillColor(white(0.03))
-
-var x: CGFloat = dotSpacing / 2
-while x < W {
-    var y: CGFloat = dotSpacing / 2
-    while y < H {
-        ctx.fillEllipse(in: CGRect(x: x - dotRadius, y: y - dotRadius,
-                                   width: dotRadius * 2, height: dotRadius * 2))
-        y += dotSpacing
-    }
-    x += dotSpacing
-}
-
-// MARK: - Layer 3 & 4: Radial glows
-
-func drawRadialGlow(ctx: CGContext, centre: CGPoint, radius: CGFloat, maxAlpha: CGFloat) {
-    let glowColors = [white(maxAlpha), white(0)] as CFArray
-    let locs: [CGFloat] = [0, 1]
-    guard let glow = CGGradient(colorsSpace: colorSpace, colors: glowColors, locations: locs) else { return }
+// Barely perceptible radial vignette: slightly cooler at the very edges
+let vigColors = [rgb(247, 245, 240, a: 0), rgb(230, 228, 224, a: 0.5)] as CFArray
+let vigLocs: [CGFloat] = [0, 1]
+if let vig = CGGradient(colorsSpace: cs, colors: vigColors, locations: vigLocs) {
+    let centre = CGPoint(x: W / 2, y: H / 2)
     ctx.saveGState()
-    ctx.addEllipse(in: CGRect(x: centre.x - radius, y: centre.y - radius,
-                               width: radius * 2, height: radius * 2))
-    ctx.clip()
-    ctx.drawRadialGradient(glow,
+    ctx.drawRadialGradient(vig,
                            startCenter: centre, startRadius: 0,
-                           endCenter:   centre, endRadius: radius,
-                           options: [])
+                           endCenter:   centre, endRadius: 420,
+                           options: [.drawsAfterEndLocation])
     ctx.restoreGState()
 }
 
-drawRadialGlow(ctx: ctx, centre: appCenter,  radius: 220, maxAlpha: 0.06)
-drawRadialGlow(ctx: ctx, centre: appsCenter, radius: 180, maxAlpha: 0.04)
+// MARK: - Layer 2: Sparse noise for paper texture
 
-// MARK: - Layer 5: Pulse rings
-
-let pulseRadii: [CGFloat] = [90, 135, 180, 225, 270]
-let pulseAlphas: [CGFloat] = [0.13, 0.10, 0.07, 0.05, 0.03]
-
-for (idx, radius) in pulseRadii.enumerated() {
-    ctx.setStrokeColor(white(pulseAlphas[idx]))
-    ctx.setLineWidth(1.5)
-    ctx.addEllipse(in: CGRect(x: appCenter.x - radius, y: appCenter.y - radius,
-                               width: radius * 2, height: radius * 2))
-    ctx.strokePath()
+srand48(17)
+for _ in 0..<1500 {
+    let a = CGFloat(drand48()) * 0.018 + 0.004
+    ctx.setFillColor(black(a))
+    ctx.fillEllipse(in: CGRect(
+        x: CGFloat(drand48()) * W - 0.5,
+        y: CGFloat(drand48()) * H - 0.5,
+        width: 1, height: 1
+    ))
 }
 
-// MARK: - Layer 6: Whisper arcs (3 short S-curves to the right of app icon)
+// MARK: - Layer 3: Audio waveform
+//
+// Vertical bars centred on the icon midline (CG y = 230).
+// Two Gaussian peaks: one at the app icon (x = 175), one at Applications (x = 525).
+// Tallest bars get the blue accent; everything else is a soft near-black.
 
-let arcAlphas: [CGFloat] = [0.18, 0.11, 0.06]
-let arcOffsets: [CGFloat] = [0, 18, -18]
+let barCount     = 70
+let barSpacing: CGFloat = 7        // centre-to-centre
+let barWidth:   CGFloat = 2
+let totalSpan   = CGFloat(barCount) * barSpacing
+let barOriginX  = (W - totalSpan) / 2 + barSpacing / 2
+let waveY: CGFloat = H / 2         // CG y (icons are at CG y = 230 = H/2)
 
-for (idx, alpha) in arcAlphas.enumerated() {
-    let startX = appCenter.x + 80
-    let startY = appCenter.y + arcOffsets[idx]
-    let endX   = appCenter.x + 160
-    let endY   = appCenter.y - arcOffsets[idx]
-    let cpX    = appCenter.x + 120
-    let cpY    = appCenter.y + arcOffsets[idx] * 2.5
+let minBarH: CGFloat = 3
+let maxBarH: CGFloat = 72
 
-    ctx.beginPath()
-    ctx.move(to: CGPoint(x: startX, y: startY))
-    ctx.addQuadCurve(to: CGPoint(x: endX, y: endY), control: CGPoint(x: cpX, y: cpY))
-    ctx.setStrokeColor(white(alpha))
-    ctx.setLineWidth(1.5)
-    ctx.strokePath()
+func waveHeight(barIndex: Int) -> CGFloat {
+    let cx = barOriginX + CGFloat(barIndex) * barSpacing
+    // Two Gaussians: left = app icon, right = Applications folder
+    let g1 = exp(-pow((cx - 175) / 70, 2))
+    let g2 = exp(-pow((cx - 525) / 60, 2)) * 0.78
+    return minBarH + max(g1, g2) * (maxBarH - minBarH)
 }
 
-// MARK: - Layer 7: Center divider
+for i in 0..<barCount {
+    let h   = waveHeight(barIndex: i)
+    let env = (h - minBarH) / (maxBarH - minBarH)   // normalised 0…1
+    let cx  = barOriginX + CGFloat(i) * barSpacing
 
-ctx.setStrokeColor(white(0.06))
-ctx.setLineWidth(1)
-ctx.move(to: CGPoint(x: W / 2, y: 80))
-ctx.addLine(to: CGPoint(x: W / 2, y: H - 80))
-ctx.strokePath()
+    let rect = CGRect(
+        x: cx - barWidth / 2,
+        y: waveY - h / 2,
+        width: barWidth,
+        height: h
+    )
 
-// MARK: - Layer 8: Curved arrow (app → Applications)
-// Quadratic Bezier from right of app icon to left of apps icon,
-// bowing downward (in CG coords = upward on screen).
+    // Blue on the prominent peaks; muted near-black elsewhere
+    if env > 0.80 {
+        let a = 0.35 + (env - 0.80) / 0.20 * 0.45   // 0.35 … 0.80
+        ctx.setFillColor(rgb(26, 126, 240, a: a))     // #1A7EF0
+    } else {
+        let a = 0.07 + env * 0.14                     // 0.07 … 0.21
+        ctx.setFillColor(black(a))
+    }
 
-let arrowStart   = CGPoint(x: appCenter.x  + 120, y: appCenter.y - 15)
-let arrowEnd     = CGPoint(x: appsCenter.x - 120, y: appsCenter.y - 15)
-let arrowControl = CGPoint(x: W / 2, y: appCenter.y - 130)
+    let r = barWidth / 2
+    ctx.addPath(CGPath(roundedRect: rect, cornerWidth: r, cornerHeight: r, transform: nil))
+    ctx.fillPath()
+}
 
-ctx.beginPath()
-ctx.move(to: arrowStart)
-ctx.addQuadCurve(to: arrowEnd, control: arrowControl)
-ctx.setStrokeColor(white(0.55))
-ctx.setLineWidth(2.0)
-ctx.strokePath()
+// MARK: - Layer 4: Typography
 
-// Arrowhead at arrowEnd
-let headLen:   CGFloat = 14
-let headAngle: CGFloat = 0.4  // radians half-spread
-
-// Tangent at end of quadratic Bezier: derivative = 2*(1-t)*(control-start) + 2*t*(end-control) at t=1
-// = 2 * (end - control)
-let tangentX = arrowEnd.x - arrowControl.x
-let tangentY = arrowEnd.y - arrowControl.y
-let tangentAngle = atan2(tangentY, tangentX)
-
-let wing1 = CGPoint(
-    x: arrowEnd.x - headLen * cos(tangentAngle - headAngle),
-    y: arrowEnd.y - headLen * sin(tangentAngle - headAngle)
-)
-let wing2 = CGPoint(
-    x: arrowEnd.x - headLen * cos(tangentAngle + headAngle),
-    y: arrowEnd.y - headLen * sin(tangentAngle + headAngle)
-)
-
-ctx.beginPath()
-ctx.move(to: arrowEnd)
-ctx.addLine(to: wing1)
-ctx.addLine(to: wing2)
-ctx.closePath()
-ctx.setFillColor(white(0.55))
-ctx.fillPath()
-
-// MARK: - Layer 9: "drag to install" label
-// Displayed y ≈ 350 pt from top = CG y ≈ H - 350*2 = 220
-
-func drawCentredText(
-    ctx: CGContext,
-    text: String,
-    font: CTFont,
-    color: CGColor,
-    centreY: CGFloat   // CG bottom-up Y of the text baseline
+func centredText(
+    _ text: String,
+    fontName: String,
+    size: CGFloat,
+    colour: CGColor,
+    topY: CGFloat          // pt from top of Finder window (more intuitive)
 ) {
-    let attrs: [NSAttributedString.Key: Any] = [
-        .font: font,
-        .foregroundColor: color
-    ]
-    let attrStr = NSAttributedString(string: text, attributes: attrs)
-    let line = CTLineCreateWithAttributedString(attrStr)
+    let font = CTFontCreateWithName(fontName as CFString, size, nil)
+    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: colour]
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
     let bounds = CTLineGetBoundsWithOptions(line, [])
     let x = (W - bounds.width) / 2 - bounds.origin.x
+
+    // Convert top-of-line (Finder coords) to CG baseline
+    let cgBaseline = H - topY - bounds.height + (-bounds.origin.y)
+
     ctx.saveGState()
     ctx.textMatrix = .identity
-    ctx.textPosition = CGPoint(x: x, y: centreY)
+    ctx.textPosition = CGPoint(x: x, y: cgBaseline)
     CTLineDraw(line, ctx)
     ctx.restoreGState()
 }
 
-// "drag to install" — small condensed, wide tracking, low opacity
-let dragFont = CTFontCreateWithName("SFProDisplay-Thin" as CFString, 22, nil)
-let dragColor = white(0.30)
-let dragLabel = "drag to install"
-drawCentredText(ctx: ctx, text: dragLabel, font: dragFont, color: dragColor, centreY: 220)
+// App name — large, thin
+centredText(
+    "Rubber Duck",
+    fontName: "SFProDisplay-Thin",
+    size: 28,
+    colour: rgb(11, 11, 18, a: 0.88),
+    topY: 32
+)
 
-// MARK: - Layer 10: "RubberDuck" title
-// Displayed y ≈ 48 pt from top → CG y ≈ H - 48*2 = 824
+// Tagline
+centredText(
+    "Voice coding agent for macOS",
+    fontName: "SFProDisplay-Ultralight",
+    size: 13,
+    colour: black(0.32),
+    topY: 66
+)
 
-let titleFont  = CTFontCreateWithName("SFProDisplay-Thin" as CFString, 48, nil)
-let titleColor = white(0.85)
-drawCentredText(ctx: ctx, text: "RubberDuck", font: titleFont, color: titleColor, centreY: 824)
-
-// MARK: - Layer 11: Tagline
-// Displayed y ≈ 72 pt from top → CG y ≈ H - 72*2 = 776
-
-let tagFont  = CTFontCreateWithName("SFProDisplay-Ultralight" as CFString, 26, nil)
-let tagColor = white(0.28)
-drawCentredText(ctx: ctx, text: "Dictate, transcribe, command.", font: tagFont, color: tagColor, centreY: 770)
+// "drag to install" — bottom, very quiet
+centredText(
+    "drag to install",
+    fontName: "SFProDisplay-Thin",
+    size: 11,
+    colour: black(0.22),
+    topY: 418
+)
 
 // MARK: - Write PNG
 
-guard let cgImage = ctx.makeImage() else { fatalError("Could not create image") }
-let image = NSBitmapImageRep(cgImage: cgImage)
-guard let pngData = image.representation(using: .png, properties: [:]) else {
-    fatalError("Could not encode PNG")
+guard let cgImage = ctx.makeImage() else { fatalError("makeImage failed") }
+let rep = NSBitmapImageRep(cgImage: cgImage)
+guard let png = rep.representation(using: .png, properties: [:]) else {
+    fatalError("PNG encode failed")
 }
-
-let outputURL = URL(fileURLWithPath: "installer/dmg-background.png")
-try pngData.write(to: outputURL)
-print("✓ installer/dmg-background.png written (\(Int(W))×\(Int(H)) px)")
+try png.write(to: URL(fileURLWithPath: "installer/dmg-background.png"))
+print("✓ installer/dmg-background.png  \(Int(W))×\(Int(H)) px")

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in RubberDuck.
+Thanks for your interest in Rubber Duck.
 
 ## Getting set up
 

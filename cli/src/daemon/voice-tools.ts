@@ -2,7 +2,7 @@
  * voice-tools.ts
  *
  * TypeScript implementation of voice tools previously executed in Swift.
- * Matches the behavior of RubberDuck/Tools/ToolExecutor.swift exactly:
+ * Matches the behavior of Rubber Duck/Tools/ToolExecutor.swift exactly:
  * path containment validation, output limits, safe mode, error message format.
  */
 

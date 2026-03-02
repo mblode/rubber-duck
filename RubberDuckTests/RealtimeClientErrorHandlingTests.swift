@@ -72,14 +72,6 @@ final class RealtimeClientErrorHandlingTests: XCTestCase {
         )
     }
 
-    func test_shouldUseMinimalStartupConfigFallback_initialAttempt_returnsFalse() {
-        XCTAssertFalse(RealtimeReconnectionPolicy.shouldUseMinimalStartupConfigFallback(reconnectAttempt: 0))
-    }
-
-    func test_shouldUseMinimalStartupConfigFallback_retryAttempt_returnsTrue() {
-        XCTAssertTrue(RealtimeReconnectionPolicy.shouldUseMinimalStartupConfigFallback(reconnectAttempt: 1))
-    }
-
     func test_resolvedModelForConnectionAttempt_beforeSecondRetry_usesConfiguredModel() {
         XCTAssertEqual(
             RealtimeReconnectionPolicy.resolvedModelForConnectionAttempt(

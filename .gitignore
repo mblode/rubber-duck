@@ -16,6 +16,7 @@ Packages/
 # Build artifacts
 /tmp/rubber-duck-build/
 *.dmg
+installer/dmg-background.png
 
 # Secrets
 .env

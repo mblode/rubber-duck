@@ -9,6 +9,7 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         var isMicrophonePermissionDenied: Bool = false
         var muteInput: Bool = false
         var isEchoCancellationActive: Bool = true
+        var isSoftwareAECActive: Bool = false
 
         func startStreaming(onChunk: @escaping (String) -> Void, onError: ((Error) -> Void)?) {
             isStreaming = true
@@ -17,6 +18,9 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         func stopStreaming() {
             isStreaming = false
         }
+
+        var notifySpeechDetectedCallCount = 0
+        func notifySpeechDetected() { notifySpeechDetectedCallCount += 1 }
     }
 
     private final class MockPlaybackManager: VoiceAudioPlayback {
@@ -68,9 +72,12 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         let defaultsSuiteName: String
     }
 
-    private func makeHarness(bargeInDelay: TimeInterval = 0.05, echoCancellationActive: Bool = true) -> Harness {
+    private func makeHarness(bargeInDelay: TimeInterval = 0.05,
+                             echoCancellationActive: Bool = true,
+                             softwareAECActive: Bool = false) -> Harness {
         let audioManager = MockAudioManager()
         audioManager.isEchoCancellationActive = echoCancellationActive
+        audioManager.isSoftwareAECActive = softwareAECActive
         let playbackManager = MockPlaybackManager()
         let realtimeClient = MockRealtimeClient()
         let overlay = MockOverlayPresenter()
@@ -145,7 +152,7 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
 
         XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1)
         XCTAssertGreaterThanOrEqual(harness.playbackManager.startPlaybackCallCount, 1)
-        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 1)
+        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 0)
         XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
         XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-42")
         XCTAssertEqual(harness.realtimeClient.truncateCalls[0].contentIndex, 0)
@@ -194,7 +201,95 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
     }
 
-    func test_speechStartedDuringSpeakingWithoutAEC_isIgnoredEvenIfMuteRaceOccurs() async throws {
+    /// With software AEC active (hardware AEC off), the guard windows should use the
+    /// AEC-short path — identical to hardware AEC — so barge-in fires quickly.
+    func test_sustainedSpeechWithSoftwareAEC_triggersBargeInAtShortGuardWindow() async throws {
+        // Software AEC on, hardware AEC off — should use short guard (0.18 s).
+        let harness = makeHarness(bargeInDelay: 0.03, echoCancellationActive: false, softwareAECActive: true)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-sw-aec",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Wait just past the software-AEC guard window (0.18 s) but well under
+        // the no-AEC guard window (0.45 s) to verify we're taking the fast path.
+        try await Task.sleep(nanoseconds: 260_000_000)  // 260 ms > 0.18 s guard
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 120_000_000)  // 120 ms > 30 ms confirmation delay
+
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1,
+                       "Barge-in must fire with software AEC active")
+        XCTAssertGreaterThanOrEqual(harness.playbackManager.startPlaybackCallCount, 1)
+        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 0)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-sw-aec")
+        XCTAssertEqual(harness.coordinator.sessionState, .listening)
+    }
+
+    /// A `speech_started` event suppressed by the assistant-audio guard window must NOT call
+    /// `notifySpeechDetected()` — that would block gain calibration and create the catch-22 loop
+    /// where echo prevents calibration from ever converging.
+    func test_suppressedSpeechStarted_doesNotCallNotifySpeechDetected() async throws {
+        // Software AEC on, hardware off — uses 0.18s guard window.
+        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: false, softwareAECActive: true)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        // Start a response — sets lastAssistantAudioDeltaAt.
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-echo",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Fire speech_started immediately — within the 0.18s software-AEC guard window.
+        // The coordinator must suppress it AND must NOT call notifySpeechDetected().
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+
+        XCTAssertEqual(harness.audioManager.notifySpeechDetectedCallCount, 0,
+                       "notifySpeechDetected must not be called for a suppressed speech_started event")
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking,
+                       "Session must remain in speaking state when speech_started is suppressed")
+    }
+
+    /// A `speech_started` event that passes all guard windows must call `notifySpeechDetected()`
+    /// exactly once so gain calibration is paused during real user speech.
+    func test_acceptedSpeechStarted_callsNotifySpeechDetectedOnce() async throws {
+        let harness = makeHarness(bargeInDelay: 0.05, echoCancellationActive: false, softwareAECActive: true)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-real",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Wait past the software-AEC guard window (0.18 s) so the event is accepted.
+        try await Task.sleep(nanoseconds: 260_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+
+        XCTAssertEqual(harness.audioManager.notifySpeechDetectedCallCount, 1,
+                       "notifySpeechDetected must be called exactly once for an accepted speech_started event")
+    }
+
+    func test_sustainedSpeechDuringSpeakingWithoutAEC_triggersDegradedBargeIn() async throws {
         let harness = makeHarness(bargeInDelay: 0.03, echoCancellationActive: false)
         defer {
             UserDefaults(suiteName: harness.defaultsSuiteName)?
@@ -209,14 +304,15 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
         )
         XCTAssertEqual(harness.coordinator.sessionState, .speaking)
 
-        // Simulate a transient mute race on hardware without AEC.
-        harness.audioManager.muteInput = false
-
+        // Without AEC, guard windows and confirmation delay are intentionally longer.
+        try await Task.sleep(nanoseconds: 520_000_000)
         harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
-        try await Task.sleep(nanoseconds: 120_000_000)
+        try await Task.sleep(nanoseconds: 650_000_000)
 
-        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0)
-        XCTAssertTrue(harness.realtimeClient.truncateCalls.isEmpty)
-        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 1)
+        XCTAssertEqual(harness.realtimeClient.cancelResponseCallCount, 0)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls.count, 1)
+        XCTAssertEqual(harness.realtimeClient.truncateCalls[0].itemId, "item-no-aec")
+        XCTAssertEqual(harness.coordinator.sessionState, .listening)
     }
 }

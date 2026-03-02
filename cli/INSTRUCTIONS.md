@@ -76,7 +76,7 @@ duck .
 # Non-sandboxed:
 tail -f ~/Library/Application\ Support/RubberDuck/duck-daemon.log
 
-# Sandboxed (from RubberDuck.app):
+# Sandboxed (from Rubber Duck.app):
 tail -f ~/Library/Containers/co.blode.rubber-duck/Data/Library/Application\ Support/RubberDuck/duck-daemon.log
 ```
 

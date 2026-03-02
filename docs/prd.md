@@ -4,13 +4,13 @@ Product requirements document: Rubber Duck (macOS menu bar voice + CLI companion
 
 Rubber Duck is a voice-first coding companion for macOS. You talk out loud; it answers out loud; and it can inspect and modify the current codebase by driving Pi CLI as the underlying coding agent. The terminal stays as the “glass box” where you can see the full transcript, tool calls, tool output, diffs, and session history. Voice is the primary interface; the CLI is the primary audit trail.
 
-The system is two pieces: RubberDuck.app (menu bar UI + mic/speaker + session manager + local daemon) and a small CLI (“duck”) that attaches a repo, follows streams, and offers simple session control. Pi runs headless in RPC mode behind the scenes to provide the agent loop, tools, and session persistence. ([GitHub][1])
+The system is two pieces: Rubber Duck.app (menu bar UI + mic/speaker + session manager + local daemon) and a small CLI (“duck”) that attaches a repo, follows streams, and offers simple session control. Pi runs headless in RPC mode behind the scenes to provide the agent loop, tools, and session persistence. ([GitHub][1])
 
 2. Goals and non-goals
 
 Goals
 
-RubberDuck.app must enable a low-friction, interruption-friendly, back-and-forth voice conversation about the current directory, where the assistant can search/read files, run bash commands, and propose or apply edits through Pi’s tool harness. ([GitHub][2])
+Rubber Duck.app must enable a low-friction, interruption-friendly, back-and-forth voice conversation about the current directory, where the assistant can search/read files, run bash commands, and propose or apply edits through Pi’s tool harness. ([GitHub][2])
 
 The CLI must show everything important: user utterances (as text), assistant responses (as text), tool calls, tool streaming output, exit codes, and any file edits. It must be usable from any terminal (Ghostty, iTerm2, Terminal.app, Zed terminal) because it’s just a normal CLI printing a stream.
 
@@ -50,7 +50,7 @@ No hidden automation. Every tool call and file edit is visible in the CLI stream
 
 5. Product surface area
 
-5.1 RubberDuck.app (menu bar)
+5.1 Rubber Duck.app (menu bar)
 
 Responsibilities
 
@@ -227,7 +227,7 @@ Create a fresh session in the current workspace and switch to it.
 Abort the currently running agent operation for the session (default: active session). Uses Pi RPC `abort`. ([GitHub][1])
 
 `duck doctor`
-Checks: RubberDuck daemon reachable, microphone permission, Pi installed and runnable, providers configured.
+Checks: Rubber Duck daemon reachable, microphone permission, Pi installed and runnable, providers configured.
 
 Optional but useful:
 
@@ -314,7 +314,7 @@ Auto-abort on barge-in
 
 Background completion notifications
 
-Session storage mode (RubberDuck-managed session dir vs global Pi session dir)
+Session storage mode (Rubber Duck-managed session dir vs global Pi session dir)
 
 Project-level customization
 
