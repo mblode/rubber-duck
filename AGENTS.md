@@ -63,7 +63,7 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - Voice tool calls (`read_file`, `write_file`, `edit_file`, `bash`, `grep_search`, `find_files`) are executed by `cli/src/daemon/voice-tools.ts` via the `voice_tool_call` daemon method. Swift no longer implements these tools locally.
 - Workspace switching from `duck [path]` → Swift menu bar is instant via `voice_session_changed` daemon push (no polling delay when daemon is running).
 - CLI binary is **not bundled** in the app. On first launch `CLIInstaller` downloads the matching-version binary from GitHub Releases (`duck-{version}-macos-{arm64|x64}`) to `~/Library/Application Support/RubberDuck/duck`, strips quarantine, and symlinks to `/usr/local/bin`. On app update the version mismatch triggers an auto-redownload.
-- The standalone `duck` binary acts as both CLI and daemon — daemon mode is activated when `argv[0]` ends in `duck-daemon` (via symlink) or `--daemon` flag is passed.
+- The standalone `duck` binary acts as both CLI and daemon — daemon mode is activated when `argv[0]` or `argv[1]` ends in `duck-daemon` (symlink), `argv[1]` ends in `--daemon` (pkg binary spawned via `ensure-daemon.ts` — pkg bootstrap calls `path.resolve()` on the first user arg, transforming `"--daemon"` to `"/cwd/--daemon"`), or `argv[2] === "--daemon"` (npm dev mode).
 
 ## Conventions
 
@@ -80,6 +80,10 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - `make dmg` — Build + create DMG (requires `brew install create-dmg`)
 - `make notarize` — Build + DMG + notarize (requires Apple Developer credentials in env)
 - `make clean` — Remove build artifacts
-- Release: `git tag v1.0.0 && git push origin main --tags` — GitHub Actions handles build/sign/notarize/release
+- Release workflow:
+  1. Commit changes, then tag: `git tag vX.Y.Z`
+  2. Push branch + tag together: `git push origin main --tags`
+  3. If push is rejected (remote ahead): `git pull --rebase && git push`
+  4. GitHub Actions picks up the tag and handles build/sign/notarize/publish automatically
 - Secrets (GitHub): `DEVELOPER_ID_CERT_P12`, `DEVELOPER_ID_CERT_PASSWORD`, `APPLE_TEAM_ID`, `NOTARIZE_APPLE_ID`, `NOTARIZE_PASSWORD`
 - Homebrew template: `homebrew/rubber-duck.rb` — copy to `mblode/homebrew-tap` repo
