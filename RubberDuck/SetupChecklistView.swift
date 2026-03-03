@@ -16,7 +16,10 @@ struct SetupChecklistView: View {
     }
 
     private var isCLIReady: Bool {
-        cliInstaller.isInstalled
+        if case .symlinkError(let info) = cliInstaller.status, info.kind == .localBinInstalled {
+            return true
+        }
+        return cliInstaller.isInstalled
     }
 
     private var allStepsComplete: Bool {
@@ -93,6 +96,18 @@ struct SetupChecklistView: View {
         case .error(let msg):
             Label(msg, systemImage: "xmark.circle")
                 .foregroundStyle(.red)
+        case .symlinkError(let info):
+            switch info.kind {
+            case .localBinInstalled:
+                Label("CLI installed to ~/.local/bin", systemImage: "checkmark.circle")
+                    .foregroundStyle(.orange)
+            case .userCancelled, .permissionDenied:
+                Label("CLI symlink failed", systemImage: "xmark.circle")
+                    .foregroundStyle(.red)
+                Button("Open Settings to fix") {
+                    SettingsWindowController.shared.show()
+                }
+            }
         }
     }
 

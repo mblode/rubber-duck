@@ -125,25 +125,7 @@ struct SettingsView: View {
             }
 
             Section("CLI Tools") {
-                HStack {
-                    cliStatusLabel
-                    Spacer()
-                    Button(cliInstaller.isInstalled ? "Reinstall" : "Download") {
-                        Task { await cliInstaller.install() }
-                    }
-                    .disabled({
-                        if case .downloading = cliInstaller.status { return true }
-                        return false
-                    }())
-                }
-                if cliInstaller.isInstalled {
-                    Button("Uninstall", role: .destructive) {
-                        cliInstaller.uninstall()
-                    }
-                }
-                Text("Downloads `duck` to ~/Library/Application Support and symlinks to /usr/local/bin")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                cliToolsSection
             }
 
             Section("Updates") {
@@ -217,21 +199,129 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private var cliStatusLabel: some View {
+    private var cliToolsSection: some View {
         switch cliInstaller.status {
         case .notInstalled:
-            Label("duck not installed", systemImage: "terminal")
+            HStack {
+                Label("duck not installed", systemImage: "terminal")
+                Spacer()
+                Button("Download") { Task { await cliInstaller.install() } }
+            }
+            Text("Downloads `duck` to ~/Library/Application Support and symlinks to /usr/local/bin")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
         case .downloading:
             Label("Downloading duck...", systemImage: "arrow.down.circle")
                 .foregroundStyle(.secondary)
+
         case .installed(let v):
-            Label("duck v\(v) installed", systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            HStack {
+                Label("duck v\(v) – /usr/local/bin/duck", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                Spacer()
+                Button("Reinstall") { Task { await cliInstaller.install() } }
+            }
+            Button("Uninstall", role: .destructive) { cliInstaller.uninstall() }
+
         case .updateAvailable(let installed, let new):
-            Label("Update available: v\(installed) → v\(new)", systemImage: "arrow.up.circle")
-                .foregroundStyle(.orange)
+            HStack {
+                Label("Update: v\(installed) → v\(new)", systemImage: "arrow.up.circle")
+                    .foregroundStyle(.orange)
+                Spacer()
+                Button("Update") { Task { await cliInstaller.install() } }
+            }
+
         case .error(let msg):
-            Text(msg).foregroundStyle(.red)
+            HStack {
+                Label(msg, systemImage: "xmark.circle").foregroundStyle(.red)
+                Spacer()
+                Button("Retry") { Task { await cliInstaller.install() } }
+            }
+
+        case .symlinkError(let info):
+            cliSymlinkErrorSection(info)
+        }
+    }
+
+    @ViewBuilder
+    private func cliSymlinkErrorSection(_ info: SymlinkErrorInfo) -> some View {
+        switch info.kind {
+        case .localBinInstalled:
+            HStack {
+                Label("duck installed to ~/.local/bin", systemImage: "checkmark.circle")
+                    .foregroundStyle(.orange)
+                Spacer()
+                Button("Reinstall") { Task { await cliInstaller.install() } }
+            }
+            Button("Uninstall", role: .destructive) { cliInstaller.uninstall() }
+            if info.localBinInPath {
+                Text("Run `duck` in your terminal. ~/.local/bin is on your PATH.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Add ~/.local/bin to your PATH:")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text(#"export PATH="$HOME/.local/bin:$PATH""#)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(
+                                #"export PATH="$HOME/.local/bin:$PATH""#,
+                                forType: .string
+                            )
+                        } label: { Image(systemName: "doc.on.doc") }
+                        .buttonStyle(.borderless)
+                        .help("Copy to clipboard")
+                    }
+                }
+            }
+
+        case .userCancelled:
+            HStack {
+                Label("Admin access declined", systemImage: "lock.slash")
+                    .foregroundStyle(.orange)
+            }
+            HStack(spacing: 8) {
+                Button("Try Again") { Task { await cliInstaller.install() } }
+                Button("Use ~/.local/bin") { Task { await cliInstaller.installToLocalBin() } }
+            }
+            Text("/usr/local/bin requires admin rights. ~/.local/bin needs no password.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .permissionDenied:
+            HStack {
+                Label("Symlink failed", systemImage: "xmark.circle").foregroundStyle(.red)
+                Spacer()
+                Button("Retry") { Task { await cliInstaller.install() } }
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Run in Terminal to finish setup:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                let cmd = "sudo ln -sfn '\(info.binaryPath)' /usr/local/bin/duck"
+                HStack {
+                    Text(cmd)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(cmd, forType: .string)
+                    } label: { Image(systemName: "doc.on.doc") }
+                    .buttonStyle(.borderless)
+                    .help("Copy command")
+                }
+            }
         }
     }
 
