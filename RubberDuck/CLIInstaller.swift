@@ -41,6 +41,11 @@ final class CLIInstaller: ObservableObject {
             status = .notInstalled
             return
         }
+        // Binary exists — also verify the symlink resolves to a live target.
+        if !fm.fileExists(atPath: cliLink.path) {
+            status = .error("Symlink missing. Run:\nsudo ln -sfn \"\(installedBinaryURL.path)\" /usr/local/bin/duck")
+            return
+        }
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let installedVersion = (try? String(contentsOf: versionFileURL, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)) ?? ""
@@ -75,13 +80,16 @@ final class CLIInstaller: ObservableObject {
                 return
             }
             let fm = FileManager.default
-            try? fm.removeItem(at: installedBinaryURL)
-            try fm.moveItem(at: tempURL, to: installedBinaryURL)
-            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: installedBinaryURL.path)
-            stripQuarantine(installedBinaryURL)
+            let destURL = installedBinaryURL
+            try? fm.removeItem(at: destURL)
+            try fm.moveItem(at: tempURL, to: destURL)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: destURL.path)
+            await Task.detached(priority: .userInitiated) { Self.stripQuarantine(destURL) }.value
             try appVersion.write(to: versionFileURL, atomically: true, encoding: .utf8)
             if let err = createSymlinks() {
                 logInfo("CLIInstaller: symlink: \(err)")
+                status = .error(err)
+                return
             }
             logInfo("CLIInstaller: installed duck v\(appVersion)")
             refresh()
@@ -108,7 +116,7 @@ final class CLIInstaller: ObservableObject {
 
     // MARK: - Private helpers
 
-    private func stripQuarantine(_ url: URL) {
+    private nonisolated static func stripQuarantine(_ url: URL) {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
         task.arguments = ["-d", "com.apple.quarantine", url.path]
@@ -128,7 +136,7 @@ final class CLIInstaller: ObservableObject {
             }
         }
         guard fm.isWritableFile(atPath: binDir.path) else {
-            return "/usr/local/bin is not writable. Run manually:\nln -sfn \"\(installedBinaryURL.path)\" /usr/local/bin/duck"
+            return "/usr/local/bin is not writable. Run manually:\nsudo ln -sfn \"\(installedBinaryURL.path)\" /usr/local/bin/duck"
         }
         for link in [cliLink, daemonLink] {
             try? fm.removeItem(at: link)

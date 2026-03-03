@@ -293,21 +293,6 @@ jobs:
             **CLI tools:** `duck [path]`, `duck say "..."`, `duck doctor`
 
             **Requires macOS 15.2 or later and an OpenAI API key.**
-
-            ---
-
-            ### Standalone CLI binaries
-
-            For direct CLI installation without the app, download the binary for your architecture:
-            - **Apple Silicon (M1/M2/M3/M4):** `duck-${{ steps.version.outputs.VERSION }}-macos-arm64`
-            - **Intel Mac:** `duck-${{ steps.version.outputs.VERSION }}-macos-x64`
-
-            ```bash
-            # Apple Silicon
-            curl -L -o /usr/local/bin/duck \
-              https://github.com/mblode/rubber-duck/releases/download/v${{ steps.version.outputs.VERSION }}/duck-${{ steps.version.outputs.VERSION }}-macos-arm64
-            chmod +x /usr/local/bin/duck
-            ```
           files: |
             /tmp/rubber-duck-build/RubberDuck-${{ steps.version.outputs.VERSION }}.dmg
             ${{ env.CLI_ARM64 }}

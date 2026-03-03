@@ -49,7 +49,7 @@ for (const arch of ["arm64", "x64"]) {
     `Step 2 (${arch}): pkg → cli-bin/duck-${arch} (node22-macos-${arch})`
   );
   execSync(
-    `npx pkg dist/cli.cjs --target node22-macos-${arch} --output ${OUT_DIR}/duck-${arch}`,
+    `npx pkg dist/cli.cjs --target node22-macos-${arch} --compress brotli --output ${OUT_DIR}/duck-${arch}`,
     { stdio: "inherit" }
   );
   execSync(`chmod +x ${OUT_DIR}/duck-${arch}`, { stdio: "inherit" });

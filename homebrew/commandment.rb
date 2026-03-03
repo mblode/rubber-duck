@@ -12,10 +12,6 @@ cask "rubber-duck" do
 
   app "Rubber Duck.app"
 
-  # Expose bundled CLI — same binary handles both modes via argv[0]
-  binary "#{appdir}/Rubber Duck.app/Contents/MacOS/duck"
-  binary "#{appdir}/Rubber Duck.app/Contents/MacOS/duck", target: "duck-daemon"
-
   zap trash: [
     "~/Library/Preferences/co.blode.rubber-duck.plist",
     "~/Library/Application Support/RubberDuck",
