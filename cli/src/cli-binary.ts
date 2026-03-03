@@ -3,7 +3,8 @@
 // (required by @yao-pkg/pkg for the standalone binary).
 // CJS require() is intentional here — static ESM imports would break CJS output.
 const { appendFileSync } = require("node:fs") as typeof import("node:fs");
-const { LOG_PATH } = require("./constants.js") as typeof import("./constants.js");
+const { LOG_PATH } =
+  require("./constants.js") as typeof import("./constants.js");
 
 const invokedAs = process.argv[1] ?? "";
 const isBinaryDaemonMode =
@@ -25,9 +26,11 @@ if (isBinaryDaemonMode) {
     try {
       appendFileSync(
         LOG_PATH,
-        `${new Date().toISOString()} Daemon failed to start (cli-binary): ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+        `${new Date().toISOString()} Daemon failed to start (cli-binary): ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`
       );
-    } catch {}
+    } catch {
+      // best-effort log write — ignore if filesystem unavailable
+    }
     console.error("Daemon failed to start:", err);
     process.exit(1);
   });
