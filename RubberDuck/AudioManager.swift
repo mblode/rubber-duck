@@ -9,10 +9,10 @@ enum AudioConstants {
     static let captureBufferSize: AVAudioFrameCount = 1024
     static let channels: AVAudioChannelCount = 1
     /// RMS threshold below which audio is replaced with silence to prevent
-    /// ambient noise from triggering server-side VAD. ~-46 dBFS, well below speech.
-    static let noiseGateThreshold: Float = 0.005
+    /// ambient noise from triggering server-side VAD. ~-40 dBFS, well below speech.
+    static let noiseGateThreshold: Float = 0.01
     /// Stricter gate used when AEC is unavailable to reduce speaker bleed into capture.
-    static let noiseGateThresholdWithoutAEC: Float = 0.012
+    static let noiseGateThresholdWithoutAEC: Float = 0.02
     /// How long (in seconds) to keep sending real audio after signal drops below threshold.
     /// Prevents the gate from clipping inter-word pauses.
     static let noiseGateHoldTime: TimeInterval = 0.25

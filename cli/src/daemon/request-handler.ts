@@ -30,6 +30,9 @@ export class RequestHandler {
   private readonly eventBus: EventBus;
   private readonly socketServer: SocketServer;
   private voiceClientId: string | null = null;
+  private voiceSessionState: "idle" | "connecting" | "listening" | "thinking" | "speaking" | "toolRunning" =
+    "idle";
+  private voiceSessionId: string | null = null;
 
   constructor(
     metadataStore: MetadataStore,
@@ -309,6 +312,8 @@ export class RequestHandler {
     this.eventBus.unsubscribe(clientId);
     if (clientId === this.voiceClientId) {
       this.voiceClientId = null;
+      this.voiceSessionState = "idle";
+      this.voiceSessionId = null;
     }
     return { id: request.id, ok: true };
   }
@@ -358,6 +363,7 @@ export class RequestHandler {
 
   private async say(request: RequestFor<"say">): Promise<DaemonResponse> {
     const message = request.params.message;
+    const preferPi = request.params.preferPi ?? false;
     const sessionRef = request.params.sessionId;
 
     if (!message) {
@@ -374,19 +380,36 @@ export class RequestHandler {
       };
     }
 
-    // Publish user utterance event for CLI stream rendering
-    this.eventBus.publish(session.id, {
-      type: "message_start",
-      message: {
-        role: "user",
-        content: message,
-        timestamp: new Date().toISOString(),
-      },
-    } as PiEvent);
+    // Route to voice only when the app is connected and actively running a voice session.
+    // If the app is connected but idle, route through Pi so `duck say` always works.
+    const voiceCanHandleMessage =
+      !preferPi &&
+      this.voiceClientId &&
+      this.voiceSessionState !== "idle" &&
+      (!this.voiceSessionId || this.voiceSessionId === session.id);
 
-    // If voice app is connected, route to voice agent instead of Pi
-    if (this.voiceClientId) {
-      this.socketServer.sendToClient(this.voiceClientId, {
+    if (voiceCanHandleMessage) {
+      // Voice-routed messages don't emit Pi user message events, so synthesize one
+      // for CLI rendering consistency.
+      this.eventBus.publish(session.id, {
+        type: "message_start",
+        message: {
+          role: "user",
+          content: message,
+          timestamp: new Date().toISOString(),
+        },
+      } as PiEvent);
+
+      const voiceClientId = this.voiceClientId;
+      if (!voiceClientId) {
+        return {
+          id: request.id,
+          ok: false,
+          error: "Voice client disconnected",
+        };
+      }
+
+      this.socketServer.sendToClient(voiceClientId, {
         event: "voice_say",
         sessionId: session.id,
         data: { text: message },
@@ -398,13 +421,17 @@ export class RequestHandler {
       };
     }
 
-    const proc = this.processManager.get(session.id);
+    let proc = this.processManager.get(session.id);
     if (!proc?.isAlive()) {
-      return {
-        id: request.id,
-        ok: false,
-        error: `Pi process for session "${session.name}" is not running`,
-      };
+      const workspace = this.metadataStore.getWorkspace(session.workspaceId);
+      if (!workspace) {
+        return {
+          id: request.id,
+          ok: false,
+          error: `Workspace for session "${session.name}" was not found`,
+        };
+      }
+      proc = this.processManager.getOrSpawn(session, workspace);
     }
 
     // Send prompt to Pi
@@ -529,8 +556,10 @@ export class RequestHandler {
     request: RequestFor<"voice_connect">
   ): DaemonResponse {
     this.voiceClientId = clientId;
+    this.voiceSessionState = "idle";
 
     const activeSession = this.metadataStore.getActiveVoiceSession();
+    this.voiceSessionId = activeSession?.id ?? null;
     const workspace = activeSession
       ? this.metadataStore.getWorkspace(activeSession.workspaceId)
       : null;
@@ -587,6 +616,8 @@ export class RequestHandler {
 
   private voiceState(request: RequestFor<"voice_state">): DaemonResponse {
     const { state, sessionId } = request.params;
+    this.voiceSessionState = state;
+    this.voiceSessionId = sessionId ?? null;
 
     const session = this.resolveSessionRef(sessionId);
 

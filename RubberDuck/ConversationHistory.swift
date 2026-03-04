@@ -6,6 +6,9 @@ enum ConversationEventType: String, Codable {
     case assistantAudio = "assistant_audio"
     case toolCall = "tool_call"
     case assistantText = "assistant_text"
+    case assistantTextDelta = "assistant_text_delta"
+    case assistantTextEnd = "assistant_text_end"
+    case responseComplete = "response_complete"
 }
 
 struct ConversationHistoryEvent: Codable {

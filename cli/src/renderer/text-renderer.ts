@@ -11,8 +11,6 @@ import { ToolTracker } from "./tool-tracker.js";
 type StreamState = "idle" | "text" | "thinking";
 
 const STATUS_DEBOUNCE_MS = 200;
-const USER_LABEL = "User:";
-const DUCK_LABEL = "Duck:";
 const write = (s: string) => process.stdout.write(s);
 
 function extractToolText(content: ToolContent): string {
@@ -31,6 +29,8 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   const toolStartTimes = new Map<string, number>();
   const streamedTools = new Set<string>();
   let lastStatusMessage: string | null = null;
+  let lastAssistantHistoryMessage: string | null = null;
+  let assistantHistoryDeltaBuffer = "";
   let statusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function flushPendingStatus(): void {
@@ -45,6 +45,18 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       write("\n");
       state = "idle";
     }
+  }
+
+  function renderAssistantHistoryMessage(message: string): void {
+    if (!message) {
+      return;
+    }
+    if (lastAssistantHistoryMessage === message) {
+      return;
+    }
+    ensureIdle();
+    write(`${text.assistant(message)}\n\n`);
+    lastAssistantHistoryMessage = message;
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Event rendering is intentionally centralized for deterministic terminal output ordering.
@@ -78,7 +90,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         if (event.message.role === "user") {
           const body = formatUserMessage(event.message);
           if (body) {
-            write(`${tag.you(USER_LABEL)} ${text.you(body)}\n\n`);
+            write(`${tag.you(">")} ${text.you(body)}\n\n`);
           }
         }
         break;
@@ -223,7 +235,6 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     switch (delta.type) {
       case "text_start":
         ensureIdle();
-        write(`${tag.assistant(DUCK_LABEL)} `);
         state = "text";
         break;
 
@@ -233,7 +244,6 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         }
         if (state !== "text") {
           ensureIdle();
-          write(`${tag.assistant(DUCK_LABEL)} `);
           state = "text";
         }
         write(text.assistant(delta.delta));
@@ -398,30 +408,53 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   function renderAppHistoryEvent(
     event: Extract<RendererPiEvent, { type: "app_history_event" }>
   ): void {
-    ensureIdle();
-
     switch (event.appEventType) {
+      case "assistant_text_delta":
+        if (event.text) {
+          if (state !== "text") {
+            ensureIdle();
+            state = "text";
+            assistantHistoryDeltaBuffer = "";
+          }
+          assistantHistoryDeltaBuffer += event.text;
+          write(text.assistant(event.text));
+        }
+        break;
+
+      case "assistant_text_end":
+        if (state === "text") {
+          write("\n\n");
+          state = "idle";
+          if (assistantHistoryDeltaBuffer.length > 0) {
+            lastAssistantHistoryMessage = assistantHistoryDeltaBuffer;
+          }
+          assistantHistoryDeltaBuffer = "";
+        }
+        break;
+
       case "assistant_audio":
         if (event.text) {
-          write(`${tag.assistant(DUCK_LABEL)} ${text.assistant(event.text)}\n`);
+          renderAssistantHistoryMessage(event.text);
         }
         break;
 
       case "assistant_text":
         if (event.text) {
-          write(`${tag.assistant(DUCK_LABEL)} ${text.assistant(event.text)}\n`);
+          renderAssistantHistoryMessage(event.text);
         }
         break;
 
       case "user_text":
+        ensureIdle();
         if (event.text) {
-          write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
+          write(`${tag.you(">")} ${text.you(event.text)}\n`);
         }
         break;
 
       case "user_audio": {
+        ensureIdle();
         if (event.text) {
-          write(`${tag.you(USER_LABEL)} ${text.you(event.text)}\n`);
+          write(`${tag.you(">")} ${text.you(event.text)}\n`);
           break;
         }
         const state = event.metadata?.state ?? "activity";
@@ -433,6 +466,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       }
 
       case "tool_call": {
+        ensureIdle();
         const tool = event.metadata?.tool;
         const state = event.metadata?.state;
         const callId = event.metadata?.call_id;
@@ -459,6 +493,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       }
 
       default:
+        ensureIdle();
         if (options.verbose) {
           const label = event.appEventType || "event";
           const body = event.text || "";
@@ -474,6 +509,9 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     render(event: RendererPiEvent): void {
       renderEvent(event);
     },
+    isStreaming(): boolean {
+      return state !== "idle";
+    },
     cleanup(): void {
       flushPendingStatus();
       ensureIdle();
@@ -481,6 +519,8 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       toolStartTimes.clear();
       streamedTools.clear();
       lastStatusMessage = null;
+      lastAssistantHistoryMessage = null;
+      assistantHistoryDeltaBuffer = "";
     },
   };
 }
