@@ -317,6 +317,7 @@ export interface ExtensionUiResponseParams {
 
 export interface SayParams {
   message: string;
+  preferPi?: boolean;
   sessionId?: string;
 }
 
@@ -469,6 +470,7 @@ export type RendererPiEvent = PiEvent | AppHistoryEvent;
 
 export interface EventRenderer {
   cleanup(): void;
+  isStreaming(): boolean;
   render(event: RendererPiEvent): void | Promise<void>;
 }
 

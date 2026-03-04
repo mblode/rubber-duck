@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PiEvent } from "../types.js";
+import type { AppHistoryEvent, PiEvent } from "../types.js";
 import { isVisibleProgressEvent } from "./say.js";
 
 describe("isVisibleProgressEvent", () => {
@@ -55,5 +55,22 @@ describe("isVisibleProgressEvent", () => {
       args: { command: "ls" },
     };
     expect(isVisibleProgressEvent(event, false)).toBe(true);
+  });
+
+  it("treats app history assistant delta events as visible progress", () => {
+    const event: AppHistoryEvent = {
+      type: "app_history_event",
+      appEventType: "assistant_text_delta",
+      text: "hello",
+    };
+    expect(isVisibleProgressEvent(event, false)).toBe(true);
+  });
+
+  it("ignores app history response_complete markers for progress", () => {
+    const event: AppHistoryEvent = {
+      type: "app_history_event",
+      appEventType: "response_complete",
+    };
+    expect(isVisibleProgressEvent(event, false)).toBe(false);
   });
 });

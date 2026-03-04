@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { createInterface } from "node:readline";
+import { clearLine, createInterface, cursorTo } from "node:readline";
 import { log } from "@clack/prompts";
 import type { DaemonClient } from "../client.js";
 import {
@@ -40,6 +40,61 @@ interface FollowRuntimeOptions {
   json: boolean;
   showThinking: boolean;
   verbose: boolean;
+}
+
+const INPUT_PROMPT = "> ";
+const INPUT_HELP_TEXT = "Enter=send  Ctrl+C=exit";
+const THINKING_STATUS_TEXT = "Duck is thinking...";
+
+function isVisibleProgressEvent(
+  event: PiEvent | AppHistoryEvent,
+  showThinking: boolean
+): boolean {
+  if (event.type === "app_history_event") {
+    return (
+      event.appEventType === "assistant_text_delta" ||
+      event.appEventType === "assistant_text" ||
+      event.appEventType === "assistant_audio" ||
+      event.appEventType === "tool_call"
+    );
+  }
+
+  switch (event.type) {
+    case "message_update": {
+      const deltaType = event.assistantMessageEvent.type;
+      if (
+        deltaType === "text_start" ||
+        deltaType === "text_delta" ||
+        deltaType === "text_end" ||
+        deltaType === "error"
+      ) {
+        return true;
+      }
+      if (
+        showThinking &&
+        (deltaType === "thinking_start" ||
+          deltaType === "thinking_delta" ||
+          deltaType === "thinking_end")
+      ) {
+        return true;
+      }
+      return false;
+    }
+    case "tool_execution_start":
+    case "tool_execution_update":
+    case "tool_execution_end":
+    case "auto_compaction_start":
+    case "auto_compaction_end":
+    case "auto_retry_start":
+    case "auto_retry_end":
+    case "extension_error":
+    case "prompt_error":
+      return true;
+    case "extension_ui_request":
+      return event.method !== "setStatus";
+    default:
+      return false;
+  }
 }
 
 function toAppHistoryEvent(raw: AppHistoryFileEvent): AppHistoryEvent | null {
@@ -253,12 +308,84 @@ export async function startFollowStream(
     });
   }
 
+  let rl: ReturnType<typeof createInterface> | null = null;
+  let waitingForResponse = false;
+  let thinkingStatusVisible = false;
+
+  const clearCurrentTerminalLine = () => {
+    cursorTo(process.stdout, 0);
+    clearLine(process.stdout, 0);
+  };
+
+  const redrawInputPrompt = () => {
+    if (!(interactive && rl)) {
+      return;
+    }
+    rl.prompt(true);
+  };
+
+  const withPromptPreserved = (fn: () => void) => {
+    if (!(interactive && rl)) {
+      fn();
+      return;
+    }
+    const wasStreaming = renderer.isStreaming();
+    if (!wasStreaming) {
+      clearCurrentTerminalLine();
+    }
+    fn();
+    if (!renderer.isStreaming()) {
+      redrawInputPrompt();
+    }
+  };
+
+  const showThinkingStatus = () => {
+    if (!interactive || thinkingStatusVisible) {
+      return;
+    }
+    withPromptPreserved(() => {
+      process.stdout.write(`${colorize("dim", THINKING_STATUS_TEXT)}\n`);
+    });
+    thinkingStatusVisible = true;
+  };
+
+  const hideThinkingStatus = () => {
+    if (!(interactive && thinkingStatusVisible)) {
+      return;
+    }
+    withPromptPreserved(() => {
+      process.stdout.write("\u001B[1A");
+      clearCurrentTerminalLine();
+    });
+    thinkingStatusVisible = false;
+  };
+
+  const logWithPrompt = (
+    level: "error" | "info" | "warn",
+    message: string
+  ): void => {
+    hideThinkingStatus();
+    withPromptPreserved(() => {
+      log[level](message);
+    });
+  };
+
+  const renderWithPrompt = (event: RendererPiEvent) => {
+    withPromptPreserved(() => {
+      renderer.render(event);
+    });
+  };
+
+  if (interactive) {
+    process.stdout.write(`${colorize("dim", INPUT_HELP_TEXT)}\n`);
+  }
+
   let hasReceivedEvents = false;
   let idleHintTimer: ReturnType<typeof setTimeout> | null = null;
   if (!options.json) {
     idleHintTimer = setTimeout(() => {
       if (!hasReceivedEvents) {
-        log.info("Waiting for session activity...");
+        logWithPrompt("info", "Waiting for session activity...");
       }
     }, 4000);
   }
@@ -272,7 +399,14 @@ export async function startFollowStream(
     }
 
     const piEvent = event.data as PiEvent;
-    renderer.render(piEvent as RendererPiEvent);
+    if (
+      waitingForResponse &&
+      isVisibleProgressEvent(piEvent, options.showThinking)
+    ) {
+      waitingForResponse = false;
+      hideThinkingStatus();
+    }
+    renderWithPrompt(piEvent as RendererPiEvent);
     handleUiEvent(event, client, { interactive });
   });
 
@@ -288,14 +422,21 @@ export async function startFollowStream(
               clearTimeout(idleHintTimer);
               idleHintTimer = null;
             }
-            renderer.render(event);
+            if (
+              waitingForResponse &&
+              isVisibleProgressEvent(event, options.showThinking)
+            ) {
+              waitingForResponse = false;
+              hideThinkingStatus();
+            }
+            renderWithPrompt(event);
           },
           (message) => {
             if (!options.verbose && message.includes("not created yet")) {
               return;
             }
             if (!options.json && (options.verbose || !appHistoryWarningShown)) {
-              log.warn(message);
+              logWithPrompt("warn", message);
               appHistoryWarningShown = true;
             }
           },
@@ -307,23 +448,40 @@ export async function startFollowStream(
       : () => undefined;
 
   // Inline text input: when running interactively, each typed line is sent as a prompt.
-  let rl: ReturnType<typeof createInterface> | null = null;
   if (interactive) {
-    rl = createInterface({ input: process.stdin, terminal: false });
+    rl = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      prompt: INPUT_PROMPT,
+      terminal: true,
+    });
+    rl.prompt();
+
     rl.on("line", (line) => {
       const message = line.trim();
       if (!message) {
+        redrawInputPrompt();
         return;
       }
-      client.request("say", { message, sessionId }).catch((err) => {
-        log.error(err instanceof Error ? err.message : String(err));
-      });
+      waitingForResponse = true;
+      showThinkingStatus();
+      client
+        .request("say", { message, preferPi: true, sessionId })
+        .catch((err) => {
+          waitingForResponse = false;
+          logWithPrompt(
+            "error",
+            err instanceof Error ? err.message : String(err)
+          );
+        });
     });
   }
 
   createStreamLifecycle(client, renderer, {
     unfollowOnCleanup: true,
     onCleanup: () => {
+      waitingForResponse = false;
+      hideThinkingStatus();
       rl?.close();
       if (idleHintTimer) {
         clearTimeout(idleHintTimer);

@@ -5,6 +5,9 @@ export function createJsonRenderer(): EventRenderer {
     render(event: RendererPiEvent): void {
       process.stdout.write(`${JSON.stringify(event)}\n`);
     },
+    isStreaming(): boolean {
+      return false;
+    },
     cleanup(): void {
       // No state to clean up in JSON mode
     },

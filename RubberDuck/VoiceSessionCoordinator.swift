@@ -103,6 +103,8 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
     private var suppressAssistantAudioUntilNextResponseCreated = false
     private var didHandleTypedResponseDoneForCurrentResponse = false
+    private var lastPublishedVoiceState: VoiceSessionState?
+    private var lastPublishedVoiceSessionID: String?
 
     // Track pending function calls from the current response
     private var pendingFunctionCalls: [(callId: String, name: String, arguments: String)] = []
@@ -115,7 +117,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         notificationCenter: NotificationCenter = .default,
         overlay: OverlayPresenting? = nil,
         userDefaults: UserDefaults = .standard,
-        bargeInConfirmationDelaySeconds: TimeInterval = 0.35,
+        bargeInConfirmationDelaySeconds: TimeInterval = 0.75,
         fileManager: FileManager = .default,
         daemonClient: DaemonSocketClient? = nil
     ) {
@@ -156,6 +158,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             conversationHistory = nil
             seenConversationItemIDs.removeAll()
             logInfo("VoiceSessionCoordinator: Cleared active session")
+            publishVoiceState(sessionState, force: true)
             return
         }
 
@@ -166,6 +169,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             conversationHistory = history
             seenConversationItemIDs.removeAll()
             logInfo("VoiceSessionCoordinator: Active session set to \(session.name) (\(recentEvents.count) history events)")
+            publishVoiceState(sessionState, force: true)
         } catch {
             conversationHistory = nil
             seenConversationItemIDs.removeAll()
@@ -218,6 +222,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                     ]
                 )
                 logInfo("VoiceSessionCoordinator: Registered with daemon")
+                publishVoiceState(sessionState, force: true)
             } catch {
                 logDebug("VoiceSessionCoordinator: Daemon registration skipped: \(error.localizedDescription)")
             }
@@ -397,6 +402,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
         sessionState = state
         logDebug("VoiceSessionCoordinator: State -> \(state.rawValue)")
+        publishVoiceState(state)
 
         if state == .idle {
             clearSpeechTurnState()
@@ -425,6 +431,34 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                     vadSuppressedUntil = suppressionUntil
                 }
                 scheduleInputUnmute(afterSeconds: unmuteDelay, maxAdditionalDelay: maxAdditionalDelay)
+            }
+        }
+    }
+
+    private func publishVoiceState(_ state: VoiceSessionState, force: Bool = false) {
+        guard let daemonClient, daemonClient.isConnected else {
+            return
+        }
+
+        let sessionID = activeSessionID
+        if !force, lastPublishedVoiceState == state, lastPublishedVoiceSessionID == sessionID {
+            return
+        }
+
+        lastPublishedVoiceState = state
+        lastPublishedVoiceSessionID = sessionID
+
+        Task {
+            do {
+                let _ = try await daemonClient.request(
+                    method: "voice_state",
+                    params: [
+                        "state": state.rawValue,
+                        "sessionId": sessionID as Any
+                    ]
+                )
+            } catch {
+                logDebug("VoiceSessionCoordinator: Failed to publish voice state: \(error.localizedDescription)")
             }
         }
     }
@@ -473,6 +507,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         }
 
         if !playbackManager.isPlaying {
+            appendHistoryEvent(type: .responseComplete, metadata: ["reason": reason])
             setState(.listening)
             overlay.show(state: .listening)
             return
@@ -518,6 +553,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
                 self.playbackManager.stopPlayback()
             }
 
+            self.appendHistoryEvent(type: .responseComplete, metadata: ["reason": reason])
             self.setState(.listening)
             self.overlay.show(state: .listening)
         }
@@ -948,16 +984,23 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioTranscriptDelta text: String) {
         lastAssistantTranscript += text
+        if !text.isEmpty {
+            appendHistoryEvent(type: .assistantTextDelta, text: text)
+        }
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveAudioTranscriptDone text: String) {
         lastAssistantTranscript = text
+        appendHistoryEvent(type: .assistantTextEnd)
         appendHistoryEvent(type: .assistantAudio, text: text)
         logInfo("VoiceSessionCoordinator: Assistant said: \(text.prefix(80))...")
     }
 
     func realtimeClient(_ client: any RealtimeClientProtocol, didReceiveTextDone text: String) {
-        appendHistoryEvent(type: .assistantText, text: text)
+        if text != lastAssistantTranscript {
+            appendHistoryEvent(type: .assistantText, text: text)
+        }
+        appendHistoryEvent(type: .assistantTextEnd)
     }
 
     // MARK: - RealtimeClientDelegate: Response Lifecycle

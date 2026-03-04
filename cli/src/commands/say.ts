@@ -4,15 +4,25 @@ import { DaemonClient } from "../client.js";
 import { ensureDaemon } from "../ensure-daemon.js";
 import { defaultColorEnabled } from "../renderer/colors.js";
 import { createRenderer } from "../renderer/index.js";
-import type { DaemonEvent, PiEvent } from "../types.js";
+import type { AppHistoryEvent, DaemonEvent, PiEvent } from "../types.js";
 import { ensureFollowing } from "./session-bootstrap.js";
 import { createStreamLifecycle } from "./stream-lifecycle.js";
+import { startAppHistoryStream } from "./follow.js";
 import { handleUiEvent } from "./ui-response.js";
 
 export function isVisibleProgressEvent(
-  event: PiEvent,
+  event: PiEvent | AppHistoryEvent,
   showThinking: boolean
 ): boolean {
+  if (event.type === "app_history_event") {
+    return (
+      event.appEventType === "assistant_text_delta" ||
+      event.appEventType === "assistant_text" ||
+      event.appEventType === "assistant_audio" ||
+      event.appEventType === "tool_call"
+    );
+  }
+
   switch (event.type) {
     case "message_update": {
       const deltaType = event.assistantMessageEvent.type;
@@ -49,6 +59,10 @@ export function isVisibleProgressEvent(
     default:
       return false;
   }
+}
+
+function isAppResponseCompleteEvent(event: AppHistoryEvent): boolean {
+  return event.appEventType === "response_complete";
 }
 
 export function registerSayCommand(program: Command): void {
@@ -99,6 +113,14 @@ export function registerSayCommand(program: Command): void {
           color,
         });
         const showThinking = options.showThinking ?? false;
+        const followData = followResp.data as {
+          appHistoryExists?: boolean;
+          appHistoryFile?: string;
+          sessionId: string;
+        };
+        const appHistoryFile = followData.appHistoryFile;
+        const appHistoryExists = followData.appHistoryExists ?? false;
+        const sessionId = followData.sessionId;
 
         // Track when agent finishes
         let agentDone = false;
@@ -106,6 +128,7 @@ export function registerSayCommand(program: Command): void {
         let commandOnlyTimer: ReturnType<typeof setTimeout> | null = null;
         let waitSpinner: ReturnType<typeof spinner> | null = null;
         let sawVisibleProgress = false;
+        let appHistoryWarningShown = false;
 
         const stopWaitSpinner = () => {
           if (waitSpinner) {
@@ -121,6 +144,51 @@ export function registerSayCommand(program: Command): void {
             commandOnlyTimer = null;
           }
         };
+
+        // Tail app voice history so `duck say` can stream responses when the
+        // menu bar app is handling the active session.
+        const stopAppHistory =
+          appHistoryFile && appHistoryFile.length > 0
+            ? startAppHistoryStream(
+                appHistoryFile,
+                (event) => {
+                  if (
+                    !sawVisibleProgress &&
+                    isVisibleProgressEvent(event, showThinking)
+                  ) {
+                    sawVisibleProgress = true;
+                    stopWaitSpinner();
+                    if (commandOnlyTimer) {
+                      clearTimeout(commandOnlyTimer);
+                      commandOnlyTimer = null;
+                    }
+                  }
+
+                  renderer.render(event);
+
+                  if (!agentStarted && isAppResponseCompleteEvent(event)) {
+                    agentDone = true;
+                    clearTimers();
+                    renderer.cleanup();
+                    client.close();
+                    process.exit(0);
+                  }
+                },
+                (message) => {
+                  if (message.includes("not created yet")) {
+                    return;
+                  }
+                  if (!options.json && !appHistoryWarningShown) {
+                    log.warn(message);
+                    appHistoryWarningShown = true;
+                  }
+                },
+                {
+                  sessionId,
+                  startFromEnd: appHistoryExists,
+                }
+              )
+            : () => undefined;
 
         // Keep lightweight feedback active until we render real stream output.
         if (!options.json && (process.stdout.isTTY ?? false)) {
@@ -145,6 +213,10 @@ export function registerSayCommand(program: Command): void {
           ) {
             sawVisibleProgress = true;
             stopWaitSpinner();
+            if (commandOnlyTimer) {
+              clearTimeout(commandOnlyTimer);
+              commandOnlyTimer = null;
+            }
           }
 
           renderer.render(piEvent);
@@ -170,6 +242,7 @@ export function registerSayCommand(program: Command): void {
         // Send the message
         const sayResp = await client.request("say", {
           message,
+          preferPi: true,
           sessionId: options.session as string | undefined,
         });
         if (!sayResp.ok) {
@@ -194,12 +267,17 @@ export function registerSayCommand(program: Command): void {
           abortOnInterrupt: true,
           onCleanup: clearTimers,
         });
+        const cleanupWithHistory = lifecycle.cleanup;
+        const cleanup = () => {
+          stopAppHistory();
+          cleanupWithHistory();
+        };
 
         // Timeout: if agent doesn't finish in 10 minutes, exit
         setTimeout(() => {
           if (!agentDone) {
             log.warn("Operation timed out.");
-            lifecycle.cleanup();
+            cleanup();
           }
         }, 600_000);
       } catch (err) {

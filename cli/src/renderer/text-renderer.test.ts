@@ -114,4 +114,59 @@ describe("text renderer", () => {
 
     expect(output).toBe("");
   });
+
+  it("streams assistant text from app history deltas", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      appEventType: "assistant_text_delta",
+      text: "Hel",
+      type: "app_history_event",
+    });
+    renderer.render({
+      appEventType: "assistant_text_delta",
+      text: "lo",
+      type: "app_history_event",
+    });
+    renderer.render({
+      appEventType: "assistant_text_end",
+      type: "app_history_event",
+    });
+    renderer.cleanup();
+
+    expect(output).toContain("Duck: Hello");
+  });
+
+  it("deduplicates final assistant_audio after streamed deltas", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      appEventType: "assistant_text_delta",
+      text: "Hi there",
+      type: "app_history_event",
+    });
+    renderer.render({
+      appEventType: "assistant_text_end",
+      type: "app_history_event",
+    });
+    renderer.render({
+      appEventType: "assistant_audio",
+      text: "Hi there",
+      type: "app_history_event",
+    });
+    renderer.cleanup();
+
+    const occurrences = output.split("Duck: Hi there").length - 1;
+    expect(occurrences).toBe(1);
+  });
 });
