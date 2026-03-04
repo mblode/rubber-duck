@@ -11,13 +11,13 @@ describe("isVisibleProgressEvent", () => {
     expect(isVisibleProgressEvent(event, false)).toBe(false);
   });
 
-  it("treats assistant text deltas as visible progress", () => {
+  it("ignores assistant text deltas in non-streaming mode", () => {
     const event: PiEvent = {
       type: "message_update",
       message: { role: "assistant" },
       assistantMessageEvent: { type: "text_delta", delta: "Hi" },
     };
-    expect(isVisibleProgressEvent(event, false)).toBe(true);
+    expect(isVisibleProgressEvent(event, false)).toBe(false);
   });
 
   it("only treats thinking deltas as visible when thinking is shown", () => {
@@ -57,20 +57,37 @@ describe("isVisibleProgressEvent", () => {
     expect(isVisibleProgressEvent(event, false)).toBe(true);
   });
 
-  it("treats app history assistant delta events as visible progress", () => {
+  it("treats turn completion events as visible progress", () => {
+    const event: PiEvent = {
+      type: "turn_end",
+      message: { role: "assistant", content: "done" },
+      toolResults: [],
+    };
+    expect(isVisibleProgressEvent(event, false)).toBe(true);
+  });
+
+  it("treats message_end events as visible progress", () => {
+    const event: PiEvent = {
+      type: "message_end",
+      message: { role: "assistant", content: "done" },
+    };
+    expect(isVisibleProgressEvent(event, false)).toBe(true);
+  });
+
+  it("treats app history assistant final events as visible progress", () => {
     const event: AppHistoryEvent = {
       type: "app_history_event",
-      appEventType: "assistant_text_delta",
+      appEventType: "assistant_text",
       text: "hello",
     };
     expect(isVisibleProgressEvent(event, false)).toBe(true);
   });
 
-  it("ignores app history response_complete markers for progress", () => {
+  it("treats app history response_complete markers as visible progress", () => {
     const event: AppHistoryEvent = {
       type: "app_history_event",
       appEventType: "response_complete",
     };
-    expect(isVisibleProgressEvent(event, false)).toBe(false);
+    expect(isVisibleProgressEvent(event, false)).toBe(true);
   });
 });

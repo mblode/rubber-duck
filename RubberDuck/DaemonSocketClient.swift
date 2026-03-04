@@ -57,13 +57,19 @@ final class DaemonSocketClient {
     private var pendingTimeouts: [String: DispatchWorkItem] = [:]
     private var receiveBuffer = Data()
     private let socketPath: String
-    private let timeoutSeconds: Double
+    private let requestTimeoutSeconds: Double
+    private let connectTimeoutSeconds: Double
 
     // MARK: - Init
 
-    init(socketPath: String, timeoutSeconds: Double = 10) {
+    init(
+        socketPath: String,
+        timeoutSeconds: Double = 10,
+        connectTimeoutSeconds: Double? = nil
+    ) {
         self.socketPath = socketPath
-        self.timeoutSeconds = timeoutSeconds
+        self.requestTimeoutSeconds = timeoutSeconds
+        self.connectTimeoutSeconds = connectTimeoutSeconds ?? timeoutSeconds
     }
 
     // MARK: - Connection
@@ -108,7 +114,7 @@ final class DaemonSocketClient {
             }
             self.connectTimeoutWorkItem?.cancel()
             self.connectTimeoutWorkItem = timeoutWorkItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + self.timeoutSeconds, execute: timeoutWorkItem)
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.connectTimeoutSeconds, execute: timeoutWorkItem)
             conn.stateUpdateHandler = { [weak self] state in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -236,7 +242,7 @@ final class DaemonSocketClient {
                 }
             }
             self.pendingTimeouts[requestId] = timeoutWork
-            DispatchQueue.main.asyncAfter(deadline: .now() + self.timeoutSeconds, execute: timeoutWork)
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.requestTimeoutSeconds, execute: timeoutWork)
 
             conn.send(content: line, completion: .contentProcessed({ _ in }))
         }

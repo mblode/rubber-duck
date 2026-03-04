@@ -15,6 +15,7 @@ class OverlayPanelController {
     private var hostingView: NSHostingView<OverlayContentView>?
     private var dismissTimer: Timer?
     private var currentState: OverlayState = .listening
+    private var pendingResizeWorkItem: DispatchWorkItem?
 
     static let shared = OverlayPanelController()
 
@@ -40,7 +41,7 @@ class OverlayPanelController {
         }
 
         hostingView?.rootView = OverlayContentView(state: state)
-        resizePanel()
+        scheduleResizePanel()
         panel?.orderFrontRegardless()
 
         let autoDismissDelay: TimeInterval? = {
@@ -59,6 +60,8 @@ class OverlayPanelController {
 
     func dismiss() {
         dismissTimer?.invalidate()
+        pendingResizeWorkItem?.cancel()
+        pendingResizeWorkItem = nil
         panel?.orderOut(nil)
     }
 
@@ -116,9 +119,22 @@ class OverlayPanelController {
     private func resizePanel() {
         guard let hosting = hostingView, let panel = panel else { return }
         let layout = computeLayout(for: hosting)
+        let targetFrame = NSRect(origin: layout.origin, size: layout.size)
+        if panel.frame.equalTo(targetFrame) {
+            return
+        }
 
         hosting.frame = NSRect(origin: .zero, size: layout.size)
-        panel.setFrame(NSRect(origin: layout.origin, size: layout.size), display: true, animate: false)
+        panel.setFrame(targetFrame, display: true, animate: false)
+    }
+
+    private func scheduleResizePanel() {
+        pendingResizeWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.resizePanel()
+        }
+        pendingResizeWorkItem = workItem
+        DispatchQueue.main.async(execute: workItem)
     }
 }
 
@@ -187,7 +203,6 @@ protocol OverlayPresenting: AnyObject {
 @MainActor
 final class LiveOverlayPresenter: OverlayPresenting {
     static let shared = LiveOverlayPresenter()
-
     private init() {}
 
     func show(state: OverlayState) {

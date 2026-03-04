@@ -20,7 +20,7 @@ describe("text renderer", () => {
     writeSpy.mockRestore();
   });
 
-  it("renders app history user_text as User label", () => {
+  it("renders app history user_text with prompt marker", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -36,10 +36,10 @@ describe("text renderer", () => {
     renderer.render(event);
     renderer.cleanup();
 
-    expect(output).toContain("User: Hey there");
+    expect(output).toContain("> Hey there");
   });
 
-  it("renders app history assistant text as Duck label", () => {
+  it("renders app history assistant final text", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -48,17 +48,17 @@ describe("text renderer", () => {
     });
 
     const event: RendererPiEvent = {
-      appEventType: "assistant_audio",
+      appEventType: "assistant_text",
       text: "How can I help?",
       type: "app_history_event",
     };
     renderer.render(event);
     renderer.cleanup();
 
-    expect(output).toContain("Duck: How can I help?");
+    expect(output).toContain("How can I help?");
   });
 
-  it("starts assistant text output on text_delta without text_start", () => {
+  it("ignores Pi text deltas in non-streaming mode", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -66,15 +66,54 @@ describe("text renderer", () => {
       verbose: false,
     });
 
-    const event: RendererPiEvent = {
+    renderer.render({
       assistantMessageEvent: { delta: "Hello from delta", type: "text_delta" },
       message: { role: "assistant" },
       type: "message_update",
-    };
-    renderer.render(event);
+    });
     renderer.cleanup();
 
-    expect(output).toContain("Duck: Hello from delta");
+    expect(output).toBe("");
+  });
+
+  it("renders assistant output from message_end final message", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      type: "message_end",
+      message: { role: "assistant", content: "Final answer" },
+    });
+    renderer.cleanup();
+
+    expect(output).toContain("Final answer");
+  });
+
+  it("deduplicates equivalent turn_end and message_end assistant output", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      type: "turn_end",
+      message: { role: "assistant", content: "Same answer" },
+      toolResults: [],
+    });
+    renderer.render({
+      type: "message_end",
+      message: { role: "assistant", content: "Same answer" },
+    });
+    renderer.cleanup();
+
+    const occurrences = output.split("Same answer").length - 1;
+    expect(occurrences).toBe(1);
   });
 
   it("suppresses speech_stopped user_audio marker when not verbose", () => {
@@ -115,7 +154,7 @@ describe("text renderer", () => {
     expect(output).toBe("");
   });
 
-  it("streams assistant text from app history deltas", () => {
+  it("ignores app history assistant delta events in non-streaming mode", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -129,20 +168,15 @@ describe("text renderer", () => {
       type: "app_history_event",
     });
     renderer.render({
-      appEventType: "assistant_text_delta",
-      text: "lo",
-      type: "app_history_event",
-    });
-    renderer.render({
       appEventType: "assistant_text_end",
       type: "app_history_event",
     });
     renderer.cleanup();
 
-    expect(output).toContain("Duck: Hello");
+    expect(output).toBe("");
   });
 
-  it("deduplicates final assistant_audio after streamed deltas", () => {
+  it("deduplicates final assistant_audio after assistant_text", () => {
     const renderer = createTextRenderer({
       color: false,
       json: false,
@@ -151,12 +185,8 @@ describe("text renderer", () => {
     });
 
     renderer.render({
-      appEventType: "assistant_text_delta",
+      appEventType: "assistant_text",
       text: "Hi there",
-      type: "app_history_event",
-    });
-    renderer.render({
-      appEventType: "assistant_text_end",
       type: "app_history_event",
     });
     renderer.render({
@@ -166,7 +196,82 @@ describe("text renderer", () => {
     });
     renderer.cleanup();
 
-    const occurrences = output.split("Duck: Hi there").length - 1;
+    const occurrences = output.split("Hi there").length - 1;
     expect(occurrences).toBe(1);
+  });
+
+  it("deduplicates app history final text against recent Pi final output", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      type: "message_end",
+      message: { role: "assistant", content: "Hello there" },
+    });
+    renderer.render({
+      appEventType: "assistant_audio",
+      text: "Hello there",
+      type: "app_history_event",
+    });
+    renderer.cleanup();
+
+    const occurrences = output.split("Hello there").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("does not deduplicate distinct final text variants", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: false,
+      verbose: false,
+    });
+
+    renderer.render({
+      appEventType: "assistant_text",
+      text: "Hi there",
+      type: "app_history_event",
+    });
+    renderer.render({
+      appEventType: "assistant_audio",
+      text: "Hi there!",
+      type: "app_history_event",
+    });
+    renderer.cleanup();
+
+    expect(output).toContain("Hi there");
+    expect(output).toContain("Hi there!");
+  });
+
+  it("renders thinking output when enabled", () => {
+    const renderer = createTextRenderer({
+      color: false,
+      json: false,
+      showThinking: true,
+      verbose: false,
+    });
+
+    renderer.render({
+      type: "message_update",
+      message: { role: "assistant" },
+      assistantMessageEvent: { type: "thinking_start" },
+    });
+    renderer.render({
+      type: "message_update",
+      message: { role: "assistant" },
+      assistantMessageEvent: { type: "thinking_delta", delta: "..." },
+    });
+    renderer.render({
+      type: "message_update",
+      message: { role: "assistant" },
+      assistantMessageEvent: { type: "thinking_end" },
+    });
+    renderer.cleanup();
+
+    expect(output).toContain("...");
   });
 });

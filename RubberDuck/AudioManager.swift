@@ -20,6 +20,13 @@ enum AudioConstants {
     static let noiseGateHoldTimeWithoutAEC: TimeInterval = 0.35
     /// Maximum time to wait for the first captured frame after engine startup.
     static let captureStartupFrameTimeout: TimeInterval = 0.6
+    /// Multiplier applied to reference RMS to form the proportional echo gate threshold.
+    /// After software AEC subtraction, residual echo is typically 10–32% of reference RMS (6–10 dB ERLE
+    /// for simple time-domain subtraction). Genuine near-end speech is 3–6× reference at the mic.
+    /// 2.0× matches the classic Geigel double-talk detector threshold (c=0.5 → 6 dB, ~2× RMS) and
+    /// WebRTC AEC3's dominant near-end detection (ENR threshold 0.25 power → ~2× RMS).
+    /// Lower = easier to barge in; raise to 3.0× if residual echo causes false VAD triggers.
+    static let proportionalEchoGateMultiplier: Float = 2.0
 }
 
 enum MicrophonePermissionState: String {
@@ -66,9 +73,11 @@ enum AudioEngineStartupPlanner {
     // AVAudioEngine/AudioUnit failures that are typically configuration/hardware mismatches.
     // Retrying the same mode immediately is unlikely to help.
     static let nonRetryableEngineStartErrorCodes: Set<Int> = [
+        -10875, // kAudioUnitErr_FailedInitialization
         -10868, // kAudioUnitErr_FormatNotSupported
         -66635  // kAudioUnitErr_MultipleVoiceProcessors
     ]
+    static let captureOnlyPreferredInputChannelThreshold: AVAudioChannelCount = 3
 
     static func makeStartupPlan(
         preferVoiceProcessing: Bool,
@@ -110,6 +119,15 @@ enum AudioEngineStartupPlanner {
         let clampedAttempt = max(1, attempt)
         let delayMs = min(100 * (1 << (clampedAttempt - 1)), 400)
         return UInt64(delayMs) * 1_000_000
+    }
+
+    static func shouldPreferCaptureOnlyGraph(
+        detectedInputChannels: AVAudioChannelCount?
+    ) -> Bool {
+        guard let detectedInputChannels else {
+            return false
+        }
+        return detectedInputChannels >= captureOnlyPreferredInputChannelThreshold
     }
 }
 
@@ -490,7 +508,7 @@ class AudioManager: NSObject, ObservableObject {
                     self.aecScratch.withUnsafeBufferPointer { ptr in
                         vDSP_rmsqv(ptr.baseAddress!, 1, &refRMS, vDSP_Length(frameCount))
                     }
-                    let proportionalThreshold = refRMS * 3.0
+                    let proportionalThreshold = refRMS * AudioConstants.proportionalEchoGateMultiplier
                     if proportionalThreshold > activeNoiseGateThreshold {
                         activeNoiseGateThreshold = proportionalThreshold
                     }
@@ -648,6 +666,7 @@ class AudioManager: NSObject, ObservableObject {
                     detectedInputChannels: detectedChannels
                 )
                 var lastError: Error?
+                var didAttemptVoiceProcessingCaptureOnly = false
 
                 @discardableResult
                 func attemptEngineStart(
@@ -759,6 +778,22 @@ class AudioManager: NSObject, ObservableObject {
                     return false
                 }
 
+                if AudioEngineStartupPlanner.shouldPreferCaptureOnlyGraph(detectedInputChannels: detectedChannels) {
+                    let channelDescription = detectedChannels.map(String.init) ?? "unknown"
+                    logInfo(
+                        "AudioManager: Detected \(channelDescription)-channel input; preferring voice-processing capture-only startup"
+                    )
+                    didAttemptVoiceProcessingCaptureOnly = true
+                    if attemptEngineStart(
+                        step: AudioEngineStartupPlanStep(mode: .voiceProcessing, maxStartAttempts: 1),
+                        includePlaybackNode: false
+                    ) {
+                        logInfo("AudioManager: VP capture-only active; hardware AEC on, playback uses fallback engine")
+                        return
+                    }
+                    logInfo("AudioManager: Capture-only fast path failed; trying shared-graph startup plan")
+                }
+
                 for step in startupPlan {
                     if attemptEngineStart(step: step, includePlaybackNode: true) {
                         return
@@ -772,13 +807,15 @@ class AudioManager: NSObject, ObservableObject {
                 // that causes -10875 in shared-graph mode. VoiceProcessingIO uses the system
                 // audio output as its AEC reference at the driver level, independent of the
                 // app's AVAudioEngine graph — hardware AEC works without a playerNode present.
-                logInfo("AudioManager: Retrying with voice-processing capture-only mode")
-                if attemptEngineStart(
-                    step: AudioEngineStartupPlanStep(mode: .voiceProcessing, maxStartAttempts: 2),
-                    includePlaybackNode: false
-                ) {
-                    logInfo("AudioManager: VP capture-only active; hardware AEC on, playback uses fallback engine")
-                    return
+                if !didAttemptVoiceProcessingCaptureOnly {
+                    logInfo("AudioManager: Retrying with voice-processing capture-only mode")
+                    if attemptEngineStart(
+                        step: AudioEngineStartupPlanStep(mode: .voiceProcessing, maxStartAttempts: 2),
+                        includePlaybackNode: false
+                    ) {
+                        logInfo("AudioManager: VP capture-only active; hardware AEC on, playback uses fallback engine")
+                        return
+                    }
                 }
 
                 // Last-resort fallback for hardware/driver combinations that fail to

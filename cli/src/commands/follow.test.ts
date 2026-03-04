@@ -153,4 +153,64 @@ describe("startAppHistoryStream", () => {
 
     expect(events).toEqual(["first-line"]);
   });
+
+  it("does not replay file contents after truncation when tailing from end", () => {
+    const filePath = join(tempDir, "history-truncate.jsonl");
+    writeFileSync(filePath, "", "utf8");
+
+    const events: string[] = [];
+    const stop = startAppHistoryStream(
+      filePath,
+      (event) => {
+        if (event.text) {
+          events.push(event.text);
+        }
+      },
+      () => {
+        // Intentionally ignored for this test.
+      },
+      {
+        startFromEnd: true,
+      }
+    );
+
+    vi.advanceTimersByTime(500);
+
+    appendFileSync(
+      filePath,
+      historyLine({
+        sessionID: "session-a",
+        text: "before-truncate",
+        type: "assistant_audio",
+      }),
+      "utf8"
+    );
+    vi.advanceTimersByTime(500);
+
+    writeFileSync(
+      filePath,
+      historyLine({
+        sessionID: "session-a",
+        text: "rewritten-old-content",
+        type: "assistant_audio",
+      }),
+      "utf8"
+    );
+    vi.advanceTimersByTime(500);
+
+    appendFileSync(
+      filePath,
+      historyLine({
+        sessionID: "session-a",
+        text: "after-truncate",
+        type: "assistant_audio",
+      }),
+      "utf8"
+    );
+    vi.advanceTimersByTime(500);
+
+    stop();
+
+    expect(events).toEqual(["before-truncate", "after-truncate"]);
+  });
 });

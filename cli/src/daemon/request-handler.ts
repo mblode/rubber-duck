@@ -30,8 +30,13 @@ export class RequestHandler {
   private readonly eventBus: EventBus;
   private readonly socketServer: SocketServer;
   private voiceClientId: string | null = null;
-  private voiceSessionState: "idle" | "connecting" | "listening" | "thinking" | "speaking" | "toolRunning" =
-    "idle";
+  private voiceSessionState:
+    | "idle"
+    | "connecting"
+    | "listening"
+    | "thinking"
+    | "speaking"
+    | "toolRunning" = "idle";
   private voiceSessionId: string | null = null;
 
   constructor(
@@ -102,6 +107,8 @@ export class RequestHandler {
           return await this.getState(request);
         case "voice_connect":
           return this.voiceConnect(clientId, request);
+        case "voice_start":
+          return this.voiceStart(request);
         case "voice_tool_call":
           return await this.voiceToolCall(request);
         case "voice_state":
@@ -245,6 +252,9 @@ export class RequestHandler {
       sessionId = active.id;
     }
 
+    // Ensure a client only has one active follow subscription at a time.
+    this.eventBus.unsubscribe(clientId);
+
     // Subscribe client to events for this session
     this.eventBus.subscribe(clientId, sessionId, (sid, event) => {
       this.socketServer.sendToClient(clientId, {
@@ -309,7 +319,28 @@ export class RequestHandler {
     clientId: string,
     request: RequestFor<"unfollow">
   ): DaemonResponse {
-    this.eventBus.unsubscribe(clientId);
+    const detachedSessionIds = this.eventBus.unsubscribe(clientId);
+
+    const shouldStopVoice =
+      clientId !== this.voiceClientId &&
+      !!this.voiceClientId &&
+      this.voiceSessionState !== "idle" &&
+      !!this.voiceSessionId &&
+      detachedSessionIds.includes(this.voiceSessionId) &&
+      this.eventBus.getSubscriberCount(this.voiceSessionId) === 0;
+
+    if (shouldStopVoice && this.voiceClientId && this.voiceSessionId) {
+      this.socketServer.sendToClient(this.voiceClientId, {
+        event: "voice_stop",
+        sessionId: this.voiceSessionId,
+        data: {
+          type: "voice_stop" as const,
+          reason: "cli_exit" as const,
+          sessionId: this.voiceSessionId,
+        },
+      });
+    }
+
     if (clientId === this.voiceClientId) {
       this.voiceClientId = null;
       this.voiceSessionState = "idle";
@@ -576,6 +607,53 @@ export class RequestHandler {
     };
   }
 
+  private voiceStart(request: RequestFor<"voice_start">): DaemonResponse {
+    const session = this.resolveSessionRef(request.params.sessionId);
+    if (!session) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "No active session for voice start",
+      };
+    }
+
+    if (!this.voiceClientId) {
+      return {
+        id: request.id,
+        ok: true,
+        data: { started: false, reason: "voice_not_connected" },
+      };
+    }
+
+    if (this.voiceSessionState !== "idle") {
+      return {
+        id: request.id,
+        ok: true,
+        data: {
+          started: false,
+          reason: "voice_already_active",
+          state: this.voiceSessionState,
+        },
+      };
+    }
+
+    this.voiceSessionId = session.id;
+    this.socketServer.sendToClient(this.voiceClientId, {
+      event: "voice_start",
+      sessionId: session.id,
+      data: {
+        type: "voice_start" as const,
+        sessionId: session.id,
+      },
+    });
+
+    return {
+      id: request.id,
+      ok: true,
+      data: { started: true, sessionId: session.id },
+    };
+  }
+
   private async voiceToolCall(
     request: RequestFor<"voice_tool_call">
   ): Promise<DaemonResponse> {
@@ -616,8 +694,15 @@ export class RequestHandler {
 
   private voiceState(request: RequestFor<"voice_state">): DaemonResponse {
     const { state, sessionId } = request.params;
+    const previousState = this.voiceSessionState;
     this.voiceSessionState = state;
-    this.voiceSessionId = sessionId ?? null;
+    if (state === "idle") {
+      this.voiceSessionId = sessionId ?? null;
+    } else if (previousState === "idle") {
+      // Lock voice ownership to the session that became active. While voice is
+      // active, ignore later session rebinding from workspace attaches.
+      this.voiceSessionId = sessionId ?? this.voiceSessionId;
+    }
 
     const session = this.resolveSessionRef(sessionId);
 

@@ -16,6 +16,52 @@ const REMOVED_COMMANDS = new Set([
   "export",
 ]);
 
+function isRemovedCommandToken(pathArg: string | undefined): boolean {
+  return (
+    !!pathArg &&
+    REMOVED_COMMANDS.has(pathArg) &&
+    !pathArg.includes("/") &&
+    !existsSync(resolveWorkspacePath(pathArg))
+  );
+}
+
+async function maybeAutoStartVoice(
+  client: DaemonClient,
+  sessionId: string
+): Promise<void> {
+  const interactive =
+    (process.stdin.isTTY ?? false) && (process.stdout.isTTY ?? false);
+  if (!interactive) {
+    return;
+  }
+
+  const maxAttempts = 12;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const voiceStartResponse = await client.request("voice_start", {
+      sessionId,
+    });
+    if (!voiceStartResponse.ok) {
+      return;
+    }
+
+    const data = (voiceStartResponse.data ?? {}) as {
+      reason?: string;
+      started?: boolean;
+    };
+    if (data.started === true || data.reason !== "voice_not_connected") {
+      return;
+    }
+
+    if (attempt < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  log.info(
+    "Rubber Duck app is not connected. Press Option+D in the app to start voice."
+  );
+}
+
 export function registerDefaultAction(program: Command): void {
   program
     .argument("[path]", "Workspace path (defaults to current directory)")
@@ -24,12 +70,7 @@ export function registerDefaultAction(program: Command): void {
       let client: DaemonClient | null = null;
 
       try {
-        if (
-          pathArg &&
-          REMOVED_COMMANDS.has(pathArg) &&
-          !pathArg.includes("/") &&
-          !existsSync(resolveWorkspacePath(pathArg))
-        ) {
+        if (isRemovedCommandToken(pathArg)) {
           log.warn(
             `\`${pathArg}\` was removed. Use \`duck\` to attach+stream and \`duck say ...\` to send prompts.`
           );
@@ -53,6 +94,8 @@ export function registerDefaultAction(program: Command): void {
           session: { id: string; name: string };
           workspace: { id: string; path: string };
         };
+
+        await maybeAutoStartVoice(client, session.id);
 
         await startFollowStream(client, session.id, {
           color,

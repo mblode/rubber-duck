@@ -87,15 +87,28 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     private var currentAudioItemId: String?
     private var currentAudioContentIndex: Int?
 
+    // False-interruption detection: if barge-in fires but the user stops speaking within
+    // falseInterruptionWindow without producing a transcript, log it as a false positive.
+    // Research: LiveKit false_interruption_timeout=2.0s, Vapi backoffSeconds=1.0s.
+    private var bargeInFiredAt: Date?
+    private let falseInterruptionWindowSeconds: TimeInterval = 1.5
+
     // Software input mute: delay unmute until audio queue has drained
     private var inputUnmuteWorkItem: DispatchWorkItem?
     private let unmutePlaybackPollIntervalSeconds: TimeInterval = 0.08
-    private let speechStartGuardAfterAssistantAudioSecondsWithAEC: TimeInterval = 0.22
-    private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 0.45
-    private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 0.9
-    private let minimumBargeInConfirmationDelayWithoutAECSeconds: TimeInterval = 0.55
-    private let minimumBargeInConfirmationDelayWithSoftwareAECSeconds: TimeInterval = 0.45
-    private let speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC: TimeInterval = 0.30
+    // Guard windows: how long after the last assistant audio delta to ignore speech_started.
+    // Hardware AEC eliminates echo well; software AEC is less reliable; no AEC needs the most protection.
+    private let speechStartGuardAfterAssistantAudioSecondsWithAEC: TimeInterval = 0.18
+    private let speechStartGuardAfterAssistantAudioSecondsWithoutAEC: TimeInterval = 0.35
+    private let postPlaybackSpeechSuppressionWithoutAECSeconds: TimeInterval = 0.6
+    // Barge-in confirmation delays: after speech_started fires during assistant playback, wait this long
+    // before committing to the interruption. Cancels if speech_stopped arrives first (anti-bounce).
+    // Research basis: PNAS linguistics study — modal human turn gap is ~200ms (universal across languages).
+    // Vapi production default: 200ms. Industry target: 200–300ms. 250ms is the sweet spot.
+    // No-AEC needs slightly more buffer to avoid echo false-positives triggering irreversible truncation.
+    private let minimumBargeInConfirmationDelayWithoutAECSeconds: TimeInterval = 0.30
+    private let minimumBargeInConfirmationDelayWithSoftwareAECSeconds: TimeInterval = 0.20
+    private let speechStartGuardAfterAssistantAudioSecondsWithSoftwareAEC: TimeInterval = 0.22
     private var pendingListeningTransitionWorkItem: DispatchWorkItem?
 
     private var isAnyAECActive: Bool {
@@ -117,7 +130,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         notificationCenter: NotificationCenter = .default,
         overlay: OverlayPresenting? = nil,
         userDefaults: UserDefaults = .standard,
-        bargeInConfirmationDelaySeconds: TimeInterval = 0.75,
+        bargeInConfirmationDelaySeconds: TimeInterval = 0.25,
         fileManager: FileManager = .default,
         daemonClient: DaemonSocketClient? = nil
     ) {
@@ -230,7 +243,6 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
     }
 
     func handleDaemonConnectionRestored() {
-        guard sessionState != .idle else { return }
         registerWithDaemon()
     }
 
@@ -253,6 +265,40 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
             return
         }
         realtimeClient.sendMessage(text: text)
+    }
+
+    /// Starts voice capture when requested by the CLI daemon.
+    /// This is start-only (never toggles an active session off).
+    func startVoiceFromDaemonRequest() {
+        maybeAttachWorkspaceFromCLIMetadata()
+
+        guard sessionState == .idle else {
+            logDebug("VoiceSessionCoordinator: Ignoring daemon voice_start — already \(sessionState.rawValue)")
+            return
+        }
+
+        guard let apiKey = KeychainManager.loadAPIKey() else {
+            logInfo("VoiceSessionCoordinator: No API key for daemon voice_start, opening settings")
+            SettingsWindowController.shared.show()
+            return
+        }
+
+        connectAndListen(apiKey: apiKey)
+    }
+
+    /// Stops voice capture when requested by the CLI daemon.
+    /// Stop applies only when the session matches the currently active session (if provided).
+    func stopVoiceFromDaemonRequest(sessionId: String?) {
+        if let sessionId, let activeSessionID, sessionId != activeSessionID {
+            logDebug("VoiceSessionCoordinator: Ignoring daemon voice_stop for session \(sessionId) while active session is \(activeSessionID)")
+            return
+        }
+
+        guard sessionState != .idle else {
+            return
+        }
+
+        disconnectSession()
     }
 
     // MARK: - Hotkey Handling
@@ -330,6 +376,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     private func handleBargeIn() {
         cancelPendingBargeIn(reason: "confirmed")
+        bargeInFiredAt = Date()
         logInfo("VoiceSessionCoordinator: Barge-in — stopping playback")
 
         let snapshot: AudioPlaybackStopSnapshot
@@ -564,6 +611,7 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
 
     private func clearSpeechTurnState() {
         hasAcceptedSpeechStart = false
+        bargeInFiredAt = nil
     }
 
     private func invalidateAudioStreamingGeneration() {
@@ -925,6 +973,16 @@ class VoiceSessionCoordinator: ObservableObject, RealtimeClientDelegate {
         if pendingBargeInWorkItem != nil, sessionState == .speaking {
             cancelPendingBargeIn(reason: "speech_stopped_before_confirmation")
             return
+        }
+
+        // Detect false interruptions: barge-in fired but speech stopped quickly with no follow-through.
+        // (TTS cannot be restored once truncated, but logging helps tune thresholds.)
+        if let firedAt = bargeInFiredAt {
+            bargeInFiredAt = nil
+            let elapsed = Date().timeIntervalSince(firedAt)
+            if elapsed < falseInterruptionWindowSeconds {
+                logDebug("VoiceSessionCoordinator: Possible false interruption — speech stopped \(Int(elapsed * 1000))ms after barge-in")
+            }
         }
 
         setState(.thinking)

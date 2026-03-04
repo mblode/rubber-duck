@@ -51,11 +51,20 @@ final class AudioEngineStartupPlannerTests: XCTestCase {
         XCTAssertFalse(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: nil, attempt: 1, maxAttempts: 1))
     }
 
-    func test_shouldRetryEngineStart_treatsFailedInitializationAsRetryable() {
-        XCTAssertTrue(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: -10875, attempt: 1, maxAttempts: 2))
+    func test_shouldRetryEngineStart_treatsFailedInitializationAsNonRetryable() {
+        XCTAssertFalse(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: -10875, attempt: 1, maxAttempts: 2))
         XCTAssertFalse(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: -10868, attempt: 1, maxAttempts: 2))
         XCTAssertFalse(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: -66635, attempt: 1, maxAttempts: 2))
         XCTAssertTrue(AudioEngineStartupPlanner.shouldRetryEngineStart(errorCode: -50, attempt: 1, maxAttempts: 2))
+    }
+
+    func test_shouldPreferCaptureOnlyGraph_forHighChannelInput() {
+        XCTAssertTrue(AudioEngineStartupPlanner.shouldPreferCaptureOnlyGraph(detectedInputChannels: 9))
+    }
+
+    func test_shouldPreferCaptureOnlyGraph_forLowOrUnknownChannelInput() {
+        XCTAssertFalse(AudioEngineStartupPlanner.shouldPreferCaptureOnlyGraph(detectedInputChannels: 1))
+        XCTAssertFalse(AudioEngineStartupPlanner.shouldPreferCaptureOnlyGraph(detectedInputChannels: nil))
     }
 
     func test_retryDelayNanoseconds_isExponentialAndCapped() {

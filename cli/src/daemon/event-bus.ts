@@ -7,6 +7,8 @@ export class EventBus {
   private readonly subscriptions = new Map<string, Set<string>>();
   // clientId -> handler function
   private readonly handlers = new Map<string, EventHandler>();
+  // clientId -> sessionId
+  private readonly clientSessions = new Map<string, string>();
 
   subscribe(clientId: string, sessionId: string, handler: EventHandler): void {
     if (!this.subscriptions.has(sessionId)) {
@@ -15,16 +17,33 @@ export class EventBus {
     const clients = this.subscriptions.get(sessionId);
     clients?.add(clientId);
     this.handlers.set(clientId, handler);
+    this.clientSessions.set(clientId, sessionId);
   }
 
-  unsubscribe(clientId: string): void {
+  unsubscribe(clientId: string): string[] {
+    const removedSessionIds: string[] = [];
+    const directSessionId = this.clientSessions.get(clientId);
+    if (directSessionId) {
+      removedSessionIds.push(directSessionId);
+      this.clientSessions.delete(clientId);
+    }
+
     this.handlers.delete(clientId);
     for (const [sessionId, clients] of this.subscriptions) {
-      clients.delete(clientId);
+      const wasSubscribed = clients.delete(clientId);
       if (clients.size === 0) {
         this.subscriptions.delete(sessionId);
       }
+      if (
+        wasSubscribed &&
+        !directSessionId &&
+        !removedSessionIds.includes(sessionId)
+      ) {
+        removedSessionIds.push(sessionId);
+      }
     }
+
+    return removedSessionIds;
   }
 
   publish(sessionId: string, event: PiEvent): void {
@@ -51,5 +70,6 @@ export class EventBus {
   clear(): void {
     this.subscriptions.clear();
     this.handlers.clear();
+    this.clientSessions.clear();
   }
 }

@@ -52,22 +52,17 @@ function isVisibleProgressEvent(
 ): boolean {
   if (event.type === "app_history_event") {
     return (
-      event.appEventType === "assistant_text_delta" ||
       event.appEventType === "assistant_text" ||
       event.appEventType === "assistant_audio" ||
-      event.appEventType === "tool_call"
+      event.appEventType === "tool_call" ||
+      event.appEventType === "response_complete"
     );
   }
 
   switch (event.type) {
     case "message_update": {
       const deltaType = event.assistantMessageEvent.type;
-      if (
-        deltaType === "text_start" ||
-        deltaType === "text_delta" ||
-        deltaType === "text_end" ||
-        deltaType === "error"
-      ) {
+      if (deltaType === "error") {
         return true;
       }
       if (
@@ -89,6 +84,9 @@ function isVisibleProgressEvent(
     case "auto_retry_end":
     case "extension_error":
     case "prompt_error":
+    case "message_end":
+    case "turn_end":
+    case "agent_end":
       return true;
     case "extension_ui_request":
       return event.method !== "setStatus";
@@ -150,6 +148,11 @@ export function startAppHistoryStream(
       }
 
       if (raw.byteLength < offsetBytes) {
+        if (options.startFromEnd ?? true) {
+          offsetBytes = raw.byteLength;
+          carry = "";
+          return;
+        }
         offsetBytes = 0;
         carry = "";
       }
@@ -311,6 +314,7 @@ export async function startFollowStream(
   let rl: ReturnType<typeof createInterface> | null = null;
   let waitingForResponse = false;
   let thinkingStatusVisible = false;
+  let promptVisible = false;
 
   const clearCurrentTerminalLine = () => {
     cursorTo(process.stdout, 0);
@@ -322,6 +326,7 @@ export async function startFollowStream(
       return;
     }
     rl.prompt(true);
+    promptVisible = true;
   };
 
   const withPromptPreserved = (fn: () => void) => {
@@ -329,14 +334,12 @@ export async function startFollowStream(
       fn();
       return;
     }
-    const wasStreaming = renderer.isStreaming();
-    if (!wasStreaming) {
+    if (promptVisible) {
       clearCurrentTerminalLine();
+      promptVisible = false;
     }
     fn();
-    if (!renderer.isStreaming()) {
-      redrawInputPrompt();
-    }
+    redrawInputPrompt();
   };
 
   const showThinkingStatus = () => {
@@ -412,40 +415,40 @@ export async function startFollowStream(
 
   // Listen for app voice history updates.
   let appHistoryWarningShown = false;
-  const stopAppHistory =
-    appHistoryFile && appHistoryFile.length > 0
-      ? startAppHistoryStream(
-          appHistoryFile,
-          (event) => {
-            hasReceivedEvents = true;
-            if (idleHintTimer) {
-              clearTimeout(idleHintTimer);
-              idleHintTimer = null;
-            }
-            if (
-              waitingForResponse &&
-              isVisibleProgressEvent(event, options.showThinking)
-            ) {
-              waitingForResponse = false;
-              hideThinkingStatus();
-            }
-            renderWithPrompt(event);
-          },
-          (message) => {
-            if (!options.verbose && message.includes("not created yet")) {
-              return;
-            }
-            if (!options.json && (options.verbose || !appHistoryWarningShown)) {
-              logWithPrompt("warn", message);
-              appHistoryWarningShown = true;
-            }
-          },
-          {
-            sessionId,
-            startFromEnd: appHistoryExists,
+  const shouldTailAppHistory = !!(appHistoryFile && appHistoryFile.length > 0);
+  const stopAppHistory = shouldTailAppHistory
+    ? startAppHistoryStream(
+        appHistoryFile,
+        (event) => {
+          hasReceivedEvents = true;
+          if (idleHintTimer) {
+            clearTimeout(idleHintTimer);
+            idleHintTimer = null;
           }
-        )
-      : () => undefined;
+          if (
+            waitingForResponse &&
+            isVisibleProgressEvent(event, options.showThinking)
+          ) {
+            waitingForResponse = false;
+            hideThinkingStatus();
+          }
+          renderWithPrompt(event);
+        },
+        (message) => {
+          if (!options.verbose && message.includes("not created yet")) {
+            return;
+          }
+          if (!options.json && (options.verbose || !appHistoryWarningShown)) {
+            logWithPrompt("warn", message);
+            appHistoryWarningShown = true;
+          }
+        },
+        {
+          sessionId,
+          startFromEnd: appHistoryExists,
+        }
+      )
+    : () => undefined;
 
   // Inline text input: when running interactively, each typed line is sent as a prompt.
   if (interactive) {
@@ -456,6 +459,7 @@ export async function startFollowStream(
       terminal: true,
     });
     rl.prompt();
+    promptVisible = true;
 
     rl.on("line", (line) => {
       const message = line.trim();

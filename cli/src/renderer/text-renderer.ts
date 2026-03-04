@@ -8,9 +8,10 @@ import { createColorStyles } from "./colors.js";
 import { formatTag, formatToolArgs, formatUserMessage } from "./format.js";
 import { ToolTracker } from "./tool-tracker.js";
 
-type StreamState = "idle" | "text" | "thinking";
+type StreamState = "idle" | "thinking";
 
 const STATUS_DEBOUNCE_MS = 200;
+const ASSISTANT_DUPLICATE_WINDOW_MS = 2500;
 const write = (s: string) => process.stdout.write(s);
 
 function extractToolText(content: ToolContent): string {
@@ -18,6 +19,10 @@ function extractToolText(content: ToolContent): string {
     .filter((c) => c.type === "text")
     .map((c) => c.text ?? "")
     .join("\n");
+}
+
+function normalizeAssistantMessage(message: string): string {
+  return message.replace(/\s+/g, " ").trim();
 }
 
 export function createTextRenderer(options: RendererOptions): EventRenderer {
@@ -29,8 +34,10 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   const toolStartTimes = new Map<string, number>();
   const streamedTools = new Set<string>();
   let lastStatusMessage: string | null = null;
-  let lastAssistantHistoryMessage: string | null = null;
-  let assistantHistoryDeltaBuffer = "";
+  let duplicateAssistantMessage: {
+    normalized: string;
+    seenAt: number;
+  } | null = null;
   let statusDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   function flushPendingStatus(): void {
@@ -47,16 +54,42 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     }
   }
 
-  function renderAssistantHistoryMessage(message: string): void {
+  function rememberAssistantMessage(message: string): void {
+    const normalized = normalizeAssistantMessage(message);
+    if (!normalized) {
+      return;
+    }
+    duplicateAssistantMessage = {
+      normalized,
+      seenAt: Date.now(),
+    };
+  }
+
+  function shouldSuppressAssistantMessage(message: string): boolean {
+    const normalized = normalizeAssistantMessage(message);
+    if (!(normalized && duplicateAssistantMessage)) {
+      return false;
+    }
+    if (
+      Date.now() - duplicateAssistantMessage.seenAt >
+      ASSISTANT_DUPLICATE_WINDOW_MS
+    ) {
+      duplicateAssistantMessage = null;
+      return false;
+    }
+    return duplicateAssistantMessage.normalized === normalized;
+  }
+
+  function renderAssistantMessage(message: string): void {
     if (!message) {
       return;
     }
-    if (lastAssistantHistoryMessage === message) {
+    if (shouldSuppressAssistantMessage(message)) {
       return;
     }
     ensureIdle();
     write(`${text.assistant(message)}\n\n`);
-    lastAssistantHistoryMessage = message;
+    rememberAssistantMessage(message);
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Event rendering is intentionally centralized for deterministic terminal output ordering.
@@ -84,6 +117,12 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         break;
 
       case "turn_end":
+        if (event.message.role === "assistant") {
+          const body = formatUserMessage(event.message);
+          if (body) {
+            renderAssistantMessage(body);
+          }
+        }
         break;
 
       case "message_start":
@@ -100,6 +139,13 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
         break;
 
       case "message_end":
+        if (event.message.role === "assistant") {
+          const body = formatUserMessage(event.message);
+          if (body) {
+            renderAssistantMessage(body);
+            break;
+          }
+        }
         ensureIdle();
         break;
 
@@ -226,7 +272,6 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     }
   }
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Streaming deltas require explicit state-machine handling for readability.
   function renderMessageUpdate(
     event: Extract<RendererPiEvent, { type: "message_update" }>
   ): void {
@@ -234,26 +279,9 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
 
     switch (delta.type) {
       case "text_start":
-        ensureIdle();
-        state = "text";
-        break;
-
       case "text_delta":
-        if (!delta.delta) {
-          break;
-        }
-        if (state !== "text") {
-          ensureIdle();
-          state = "text";
-        }
-        write(text.assistant(delta.delta));
-        break;
-
       case "text_end":
-        if (state === "text") {
-          write("\n\n");
-          state = "idle";
-        }
+        // Non-streaming mode: wait for final assistant message events.
         break;
 
       case "thinking_start":
@@ -363,7 +391,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
     switch (event.method) {
       case "setStatus":
         // Internal agent status (e.g. "Thinking...") — show only in verbose mode.
-        // In default mode these are noise; streaming text is sufficient feedback.
+        // In default mode these are noise; final assistant/tool events provide feedback.
         if (options.verbose && event.message) {
           if (event.message === lastStatusMessage) {
             break;
@@ -410,37 +438,19 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
   ): void {
     switch (event.appEventType) {
       case "assistant_text_delta":
-        if (event.text) {
-          if (state !== "text") {
-            ensureIdle();
-            state = "text";
-            assistantHistoryDeltaBuffer = "";
-          }
-          assistantHistoryDeltaBuffer += event.text;
-          write(text.assistant(event.text));
-        }
-        break;
-
       case "assistant_text_end":
-        if (state === "text") {
-          write("\n\n");
-          state = "idle";
-          if (assistantHistoryDeltaBuffer.length > 0) {
-            lastAssistantHistoryMessage = assistantHistoryDeltaBuffer;
-          }
-          assistantHistoryDeltaBuffer = "";
-        }
+        // Non-streaming mode: render only final app-history assistant text.
         break;
 
       case "assistant_audio":
         if (event.text) {
-          renderAssistantHistoryMessage(event.text);
+          renderAssistantMessage(event.text);
         }
         break;
 
       case "assistant_text":
         if (event.text) {
-          renderAssistantHistoryMessage(event.text);
+          renderAssistantMessage(event.text);
         }
         break;
 
@@ -510,7 +520,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       renderEvent(event);
     },
     isStreaming(): boolean {
-      return state !== "idle";
+      return state === "thinking";
     },
     cleanup(): void {
       flushPendingStatus();
@@ -519,8 +529,7 @@ export function createTextRenderer(options: RendererOptions): EventRenderer {
       toolStartTimes.clear();
       streamedTools.clear();
       lastStatusMessage = null;
-      lastAssistantHistoryMessage = null;
-      assistantHistoryDeltaBuffer = "";
+      duplicateAssistantMessage = null;
     },
   };
 }

@@ -5,9 +5,9 @@ import { ensureDaemon } from "../ensure-daemon.js";
 import { defaultColorEnabled } from "../renderer/colors.js";
 import { createRenderer } from "../renderer/index.js";
 import type { AppHistoryEvent, DaemonEvent, PiEvent } from "../types.js";
+import { startAppHistoryStream } from "./follow.js";
 import { ensureFollowing } from "./session-bootstrap.js";
 import { createStreamLifecycle } from "./stream-lifecycle.js";
-import { startAppHistoryStream } from "./follow.js";
 import { handleUiEvent } from "./ui-response.js";
 
 export function isVisibleProgressEvent(
@@ -16,22 +16,17 @@ export function isVisibleProgressEvent(
 ): boolean {
   if (event.type === "app_history_event") {
     return (
-      event.appEventType === "assistant_text_delta" ||
       event.appEventType === "assistant_text" ||
       event.appEventType === "assistant_audio" ||
-      event.appEventType === "tool_call"
+      event.appEventType === "tool_call" ||
+      event.appEventType === "response_complete"
     );
   }
 
   switch (event.type) {
     case "message_update": {
       const deltaType = event.assistantMessageEvent.type;
-      if (
-        deltaType === "text_start" ||
-        deltaType === "text_delta" ||
-        deltaType === "text_end" ||
-        deltaType === "error"
-      ) {
+      if (deltaType === "error") {
         return true;
       }
       if (
@@ -53,6 +48,9 @@ export function isVisibleProgressEvent(
     case "auto_retry_end":
     case "extension_error":
     case "prompt_error":
+    case "message_end":
+    case "turn_end":
+    case "agent_end":
       return true;
     case "extension_ui_request":
       return event.method !== "setStatus";
@@ -130,6 +128,13 @@ export function registerSayCommand(program: Command): void {
         let sawVisibleProgress = false;
         let appHistoryWarningShown = false;
 
+        const clearCommandOnlyTimer = () => {
+          if (commandOnlyTimer) {
+            clearTimeout(commandOnlyTimer);
+            commandOnlyTimer = null;
+          }
+        };
+
         const stopWaitSpinner = () => {
           if (waitSpinner) {
             waitSpinner.stop();
@@ -139,10 +144,34 @@ export function registerSayCommand(program: Command): void {
 
         const clearTimers = () => {
           stopWaitSpinner();
-          if (commandOnlyTimer) {
-            clearTimeout(commandOnlyTimer);
-            commandOnlyTimer = null;
+          clearCommandOnlyTimer();
+        };
+
+        const markVisibleProgress = (event: PiEvent | AppHistoryEvent) => {
+          if (
+            !sawVisibleProgress &&
+            isVisibleProgressEvent(event, showThinking)
+          ) {
+            sawVisibleProgress = true;
+            stopWaitSpinner();
+            clearCommandOnlyTimer();
           }
+        };
+
+        const exitSuccess = () => {
+          agentDone = true;
+          clearTimers();
+          renderer.cleanup();
+          client.close();
+          process.exit(0);
+        };
+
+        const exitPromptError = (message: string) => {
+          clearTimers();
+          renderer.cleanup();
+          client.close();
+          log.error(message);
+          process.exit(1);
         };
 
         // Tail app voice history so `duck say` can stream responses when the
@@ -152,33 +181,19 @@ export function registerSayCommand(program: Command): void {
             ? startAppHistoryStream(
                 appHistoryFile,
                 (event) => {
-                  if (
-                    !sawVisibleProgress &&
-                    isVisibleProgressEvent(event, showThinking)
-                  ) {
-                    sawVisibleProgress = true;
-                    stopWaitSpinner();
-                    if (commandOnlyTimer) {
-                      clearTimeout(commandOnlyTimer);
-                      commandOnlyTimer = null;
-                    }
-                  }
+                  markVisibleProgress(event);
 
                   renderer.render(event);
 
                   if (!agentStarted && isAppResponseCompleteEvent(event)) {
-                    agentDone = true;
-                    clearTimers();
-                    renderer.cleanup();
-                    client.close();
-                    process.exit(0);
+                    exitSuccess();
                   }
                 },
                 (message) => {
                   if (message.includes("not created yet")) {
                     return;
                   }
-                  if (!options.json && !appHistoryWarningShown) {
+                  if (!(options.json || appHistoryWarningShown)) {
                     log.warn(message);
                     appHistoryWarningShown = true;
                   }
@@ -201,41 +216,19 @@ export function registerSayCommand(program: Command): void {
 
           if (piEvent.type === "agent_start") {
             agentStarted = true;
-            if (commandOnlyTimer) {
-              clearTimeout(commandOnlyTimer);
-              commandOnlyTimer = null;
-            }
+            clearCommandOnlyTimer();
           }
-
-          if (
-            !sawVisibleProgress &&
-            isVisibleProgressEvent(piEvent, showThinking)
-          ) {
-            sawVisibleProgress = true;
-            stopWaitSpinner();
-            if (commandOnlyTimer) {
-              clearTimeout(commandOnlyTimer);
-              commandOnlyTimer = null;
-            }
-          }
+          markVisibleProgress(piEvent);
 
           renderer.render(piEvent);
           handleUiEvent(event, client, { interactive });
 
           if (piEvent.type === "agent_end") {
-            agentDone = true;
-            clearTimers();
-            renderer.cleanup();
-            client.close();
-            process.exit(0);
+            exitSuccess();
           }
 
           if (piEvent.type === "prompt_error") {
-            clearTimers();
-            renderer.cleanup();
-            client.close();
-            log.error(piEvent.error);
-            process.exit(1);
+            exitPromptError(piEvent.error);
           }
         });
 

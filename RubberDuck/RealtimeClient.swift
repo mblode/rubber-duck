@@ -359,9 +359,13 @@ class RealtimeClient: NSObject, ObservableObject, URLSessionWebSocketDelegate {
             "type": "audio/pcm",
             "rate": Int(AudioConstants.sampleRate)
         ]
+        // semantic_vad uses a language model classifier to detect turn boundaries, which is better than
+        // server_vad at distinguishing real speech from filler words ("hmm", "okay") during barge-in.
+        // eagerness "medium" (4s max timeout) gives responsive turn-taking for short voice commands
+        // while still waiting for complete thoughts — better than "low" (8s) for a coding assistant.
         let turnDetection: [String: Any] = [
             "type": "semantic_vad",
-            "eagerness": "low",
+            "eagerness": "medium",
             "interrupt_response": true,
             "create_response": true
         ]

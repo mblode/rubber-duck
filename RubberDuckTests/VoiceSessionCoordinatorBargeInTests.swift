@@ -289,6 +289,89 @@ final class VoiceSessionCoordinatorBargeInTests: XCTestCase {
                        "notifySpeechDetected must be called exactly once for an accepted speech_started event")
     }
 
+    /// If speech_stopped arrives while the barge-in confirmation timer is still pending,
+    /// the timer must be cancelled and barge-in must NOT fire. This is the anti-bounce mechanism
+    /// that prevents brief sounds (coughs, "uh-huh", background noise) from interrupting TTS.
+    func test_speechStoppedDuringConfirmationWindow_cancelsBargeIn() async throws {
+        // Use a long confirmation delay so we can reliably fire speech_stopped within it.
+        let harness = makeHarness(bargeInDelay: 0.20, echoCancellationActive: true)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-bounce",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Wait past the hardware-AEC guard window (0.18s) so speech_started is accepted.
+        try await Task.sleep(nanoseconds: 260_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+
+        // Confirmation timer is now pending (0.20s). Stop speaking well within that window.
+        try await Task.sleep(nanoseconds: 40_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStopped(harness.realtimeClient)
+
+        // Allow enough time for the (now-cancelled) timer to have fired if it wasn't cancelled.
+        try await Task.sleep(nanoseconds: 280_000_000)
+
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0,
+                       "Barge-in must not fire when speech_stopped arrives before confirmation delay expires")
+        XCTAssertTrue(harness.realtimeClient.truncateCalls.isEmpty,
+                      "No truncate must be sent when barge-in is cancelled by speech_stopped")
+        // speech_stopped hit the early-return path (cancelled the pending barge-in), so the
+        // coordinator stays in .speaking — the assistant is still playing audio.
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking,
+                       "State must remain .speaking when speech_stopped cancels the barge-in confirmation")
+    }
+
+    /// Rapid speech_started/stopped chatter during the confirmation window must not accumulate
+    /// into a barge-in. Each speech_stopped must cancel the pending timer, and only sustained
+    /// speech that outlasts the confirmation delay should trigger an interruption.
+    func test_vadChatter_multipleStartStopDuringConfirmation_doesNotTriggerBargeIn() async throws {
+        let harness = makeHarness(bargeInDelay: 0.15, echoCancellationActive: true)
+        defer {
+            UserDefaults(suiteName: harness.defaultsSuiteName)?
+                .removePersistentDomain(forName: harness.defaultsSuiteName)
+        }
+
+        harness.coordinator.realtimeClient(
+            harness.realtimeClient,
+            didReceiveAudioDelta: "AAAA",
+            itemId: "item-chatter",
+            contentIndex: 0
+        )
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+
+        // Wait past guard window.
+        try await Task.sleep(nanoseconds: 260_000_000)
+
+        // First burst: starts and stops within 30ms (well inside 150ms confirmation).
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStopped(harness.realtimeClient)
+
+        // Brief gap, then second burst: also short.
+        try await Task.sleep(nanoseconds: 20_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStarted(harness.realtimeClient)
+        try await Task.sleep(nanoseconds: 30_000_000)
+        harness.coordinator.realtimeClientDidDetectSpeechStopped(harness.realtimeClient)
+
+        // Wait for any pending timers to fire.
+        try await Task.sleep(nanoseconds: 250_000_000)
+
+        XCTAssertEqual(harness.playbackManager.stopImmediatelyCallCount, 0,
+                       "VAD chatter must not accumulate into a barge-in")
+        XCTAssertTrue(harness.realtimeClient.truncateCalls.isEmpty)
+        // Each speech_stopped hit the early-return path (cancelled pending barge-in), so the
+        // coordinator never transitioned out of .speaking — the assistant is still playing.
+        XCTAssertEqual(harness.coordinator.sessionState, .speaking)
+    }
+
     /// Without hardware AEC (no AEC at all), the mic must be muted during playback to prevent
     /// echo from reaching the server and triggering false barge-in.
     func test_speakingWithoutAEC_mutesDuringPlayback_noBargein() async throws {

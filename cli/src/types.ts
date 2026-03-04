@@ -286,6 +286,7 @@ export type DaemonMethod =
   | "get_state"
   | "ping"
   | "voice_connect"
+  | "voice_start"
   | "voice_tool_call"
   | "voice_state";
 
@@ -342,6 +343,10 @@ export interface VoiceConnectParams {
   workspacePath?: string;
 }
 
+export interface VoiceStartParams {
+  sessionId?: string;
+}
+
 export interface VoiceToolCallParams {
   arguments: string;
   callId: string;
@@ -372,6 +377,7 @@ export interface DaemonRequestMap {
   sessions: SessionsParams;
   unfollow: UnfollowParams;
   voice_connect: VoiceConnectParams;
+  voice_start: VoiceStartParams;
   voice_state: VoiceStateParams;
   voice_tool_call: VoiceToolCallParams;
 }

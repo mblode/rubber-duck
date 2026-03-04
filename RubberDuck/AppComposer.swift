@@ -34,7 +34,11 @@ enum AppComposer {
         let playback = AudioPlaybackManager(audioManager: audio, referenceBuffer: aecBuffer)
         let rtClient = RealtimeClient()
         let workspaces = WorkspaceManager()
-        let daemonClient = DaemonSocketClient(socketPath: AppSupportPaths.daemonSocketURL().path)
+        let daemonClient = DaemonSocketClient(
+            socketPath: AppSupportPaths.daemonSocketURL().path,
+            timeoutSeconds: 10,
+            connectTimeoutSeconds: 1.0
+        )
         SettingsWindowController.shared.configure(
             configManager: transcription,
             audioManager: audio,
@@ -78,6 +82,12 @@ enum AppComposer {
                 let sessionId = data["sessionId"] as? String
                 let sessionName = data["sessionName"] as? String
                 workspaces?.handleDaemonWorkspaceChanged(path: workspacePath, sessionId: sessionId, sessionName: sessionName)
+            } else if eventType == "voice_start" {
+                voiceCoord?.startVoiceFromDaemonRequest()
+            } else if eventType == "voice_stop" {
+                let data = event["data"] as? [String: Any]
+                let sessionId = data?["sessionId"] as? String
+                voiceCoord?.stopVoiceFromDaemonRequest(sessionId: sessionId)
             } else if eventType == "voice_say",
                       let data = event["data"] as? [String: Any],
                       let text = data["text"] as? String {
@@ -85,13 +95,26 @@ enum AppComposer {
             }
         }
 
-        // Start daemon connection in background (best-effort, non-blocking)
+        // Keep a lightweight background reconnect loop so the app can discover
+        // a daemon that starts after the menu bar app has already launched.
         Task {
-            await daemonClient.connect()
-            if daemonClient.isConnected {
-                logInfo("Rubber Duck: Connected to CLI daemon")
-            } else {
-                logDebug("Rubber Duck: CLI daemon not running (voice tools will execute locally)")
+            var didLogUnavailable = false
+            while true {
+                if !daemonClient.isConnected {
+                    await daemonClient.connect()
+                    if daemonClient.isConnected {
+                        didLogUnavailable = false
+                        logInfo("Rubber Duck: Connected to CLI daemon")
+                        // Ensure voice registration happens even if onConnect
+                        // was missed during startup race conditions.
+                        voiceCoord.handleDaemonConnectionRestored()
+                    } else if !didLogUnavailable {
+                        didLogUnavailable = true
+                        logDebug("Rubber Duck: CLI daemon not running (voice tools will execute locally)")
+                    }
+                }
+
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
 
@@ -112,6 +135,7 @@ enum AppComposer {
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         logInfo("System: \(osVersion), App Version: \(appVersion)")
+        logInfo("Rubber Duck: Overlay UI enabled")
 
         return AppManagers(
             audioManager: audio,
