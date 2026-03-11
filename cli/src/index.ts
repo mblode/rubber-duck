@@ -46,6 +46,7 @@ export type {
   PiSessionStats,
   PiState,
   PiToolCall,
+  RemoteControlStatus,
   RendererOptions,
   RendererPiEvent,
   Session,

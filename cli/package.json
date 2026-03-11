@@ -22,7 +22,7 @@
     "LICENSE.md"
   ],
   "scripts": {
-    "build": "tsdown && node scripts/fix-shebang.mjs",
+    "build": "tsdown && node scripts/fix-shebang.mjs && node scripts/copy-web-client.mjs",
     "build:binary": "npm run build && node scripts/build-binary.mjs",
     "dev": "tsdown --watch",
     "start": "node dist/cli.js",
@@ -57,12 +57,14 @@
     "@clack/prompts": "^1.0.0",
     "@mariozechner/pi-coding-agent": "^0.55.0",
     "commander": "^14.0.3",
-    "minimatch": "^10.2.4"
+    "minimatch": "^10.2.4",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.0",
     "@changesets/cli": "^2.29.0",
     "@types/node": "^22.19.11",
+    "@types/ws": "^8.18.1",
     "@yao-pkg/pkg": "^5.13.0",
     "esbuild": "^0.24.0",
     "tsdown": "^0.12.0",

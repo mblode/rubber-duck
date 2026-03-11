@@ -39,6 +39,7 @@ if (isBinaryDaemonMode) {
     const { Command } = await import("commander");
     const { registerDefaultAction } = await import("./commands/default.js");
     const { registerDoctorCommand } = await import("./commands/doctor.js");
+    const { registerRemoteCommand } = await import("./commands/remote.js");
     const { registerSayCommand } = await import("./commands/say.js");
     const { registerSessionsCommand } = await import("./commands/sessions.js");
 
@@ -53,6 +54,7 @@ if (isBinaryDaemonMode) {
       registerSayCommand,
       registerSessionsCommand,
       registerDoctorCommand,
+      registerRemoteCommand,
     ] as const) {
       fn(program);
     }

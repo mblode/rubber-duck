@@ -281,10 +281,14 @@ export type DaemonMethod =
   | "extension_ui_response"
   | "say"
   | "sessions"
+  | "workspaces"
+  | "activate_session"
   | "abort"
   | "doctor"
   | "get_state"
   | "ping"
+  | "remote_configure"
+  | "remote_status"
   | "voice_connect"
   | "voice_start"
   | "voice_tool_call"
@@ -327,6 +331,13 @@ export interface SessionsParams {
   workspaceId?: string;
 }
 
+// biome-ignore lint/suspicious/noEmptyInterface: Typed placeholder for discriminated union map
+export interface WorkspacesParams {}
+
+export interface ActivateSessionParams {
+  sessionId: string;
+}
+
 export interface AbortParams {
   sessionId?: string;
 }
@@ -338,8 +349,40 @@ export interface GetStateParams {
   sessionId?: string;
 }
 
+export interface RemoteConfigureParams {
+  authToken?: string;
+  enabled?: boolean;
+  host?: string;
+  includeToken?: boolean;
+  port?: number;
+  rotateToken?: boolean;
+  tlsCertPath?: string | null;
+  tlsKeyPath?: string | null;
+}
+
+export interface RemoteStatusParams {
+  includeToken?: boolean;
+}
+
+export interface RemoteControlStatus {
+  connectedClients: number;
+  enabled: boolean;
+  host: string;
+  httpUrl: string | null;
+  lastError: string | null;
+  listening: boolean;
+  port: number;
+  protocol: "http" | "https";
+  tlsEnabled: boolean;
+  tokenConfigured: boolean;
+  tokenUpdatedAt: string | null;
+  wsUrl: string | null;
+}
+
 export interface VoiceConnectParams {
+  clientType?: "local-app" | "remote-web" | "remote-ios";
   clientVersion: string;
+  takeover?: boolean;
   workspacePath?: string;
 }
 
@@ -347,32 +390,38 @@ export interface VoiceStartParams {
   sessionId?: string;
 }
 
+export type VoiceStateValue =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "thinking"
+  | "speaking"
+  | "toolRunning";
+
 export interface VoiceToolCallParams {
   arguments: string;
   callId: string;
+  sessionId?: string;
   toolName: string;
-  workspacePath: string;
+  workspacePath?: string;
 }
 
 export interface VoiceStateParams {
   sessionId?: string;
-  state:
-    | "idle"
-    | "connecting"
-    | "listening"
-    | "thinking"
-    | "speaking"
-    | "toolRunning";
+  state: VoiceStateValue;
 }
 
 export interface DaemonRequestMap {
   abort: AbortParams;
+  activate_session: ActivateSessionParams;
   attach: AttachParams;
   doctor: DoctorParams;
   extension_ui_response: ExtensionUiResponseParams;
   follow: FollowParams;
   get_state: GetStateParams;
   ping: PingParams;
+  remote_configure: RemoteConfigureParams;
+  remote_status: RemoteStatusParams;
   say: SayParams;
   sessions: SessionsParams;
   unfollow: UnfollowParams;
@@ -380,6 +429,7 @@ export interface DaemonRequestMap {
   voice_start: VoiceStartParams;
   voice_state: VoiceStateParams;
   voice_tool_call: VoiceToolCallParams;
+  workspaces: WorkspacesParams;
 }
 
 export type DaemonRequest = {

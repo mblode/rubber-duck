@@ -8,28 +8,21 @@ import {
 } from "node:fs";
 import {
   APP_SUPPORT,
-  CONFIG_PATH,
   LOG_PATH,
   PID_PATH,
   SESSIONS_DIR,
   SOCKET_PATH,
 } from "../constants.js";
+import type { DaemonRequest } from "../types.js";
+import { ClientRegistry } from "./client-registry.js";
+import { DaemonConfigStore } from "./config-store.js";
 import { EventBus } from "./event-bus.js";
 import { HealthMonitor } from "./health.js";
 import { MetadataStore } from "./metadata-store.js";
 import { PiProcessManager } from "./pi-process-manager.js";
+import { RemoteControlManager } from "./remote-control.js";
 import { RequestHandler } from "./request-handler.js";
 import { SocketServer } from "./socket-server.js";
-
-interface DaemonConfig {
-  logToStderr: boolean;
-  version: number;
-}
-
-const DEFAULT_DAEMON_CONFIG: DaemonConfig = {
-  version: 1,
-  logToStderr: false,
-};
 
 function appendDaemonLog(message: string): void {
   try {
@@ -47,75 +40,51 @@ function logDaemon(message: string, verbose: boolean): void {
   }
 }
 
-function loadDaemonConfig(): DaemonConfig {
-  try {
-    if (!existsSync(CONFIG_PATH)) {
-      writeFileSync(
-        CONFIG_PATH,
-        JSON.stringify(DEFAULT_DAEMON_CONFIG, null, 2)
-      );
-      return { ...DEFAULT_DAEMON_CONFIG };
-    }
-
-    const raw = readFileSync(CONFIG_PATH, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<DaemonConfig>;
-    return {
-      version:
-        typeof parsed.version === "number"
-          ? parsed.version
-          : DEFAULT_DAEMON_CONFIG.version,
-      logToStderr:
-        typeof parsed.logToStderr === "boolean"
-          ? parsed.logToStderr
-          : DEFAULT_DAEMON_CONFIG.logToStderr,
-    };
-  } catch {
-    writeFileSync(CONFIG_PATH, JSON.stringify(DEFAULT_DAEMON_CONFIG, null, 2));
-    return { ...DEFAULT_DAEMON_CONFIG };
-  }
-}
-
 export async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const argsVerbose = args.includes("--verbose");
 
-  // Check if daemon is already running
   if (existsSync(PID_PATH)) {
     try {
       const pid = Number.parseInt(readFileSync(PID_PATH, "utf-8").trim(), 10);
-      process.kill(pid, 0); // Check if process exists
+      process.kill(pid, 0);
       if (argsVerbose) {
         console.error(`Daemon already running (pid ${pid})`);
       }
       process.exit(0);
     } catch {
-      // PID file is stale, clean up
       try {
         unlinkSync(PID_PATH);
       } catch {
-        /* ignore */
+        // ignore stale pid cleanup failure
       }
     }
   }
 
-  // Ensure directories exist
   mkdirSync(APP_SUPPORT, { recursive: true });
   mkdirSync(SESSIONS_DIR, { recursive: true });
-  const config = loadDaemonConfig();
-  const verbose = argsVerbose || config.logToStderr;
+
+  const configStore = new DaemonConfigStore();
+  const verbose = argsVerbose || configStore.getConfig().logToStderr;
 
   logDaemon(`Daemon boot (pid ${process.pid})`, verbose);
 
-  // Initialize components
   const metadataStore = new MetadataStore();
   const eventBus = new EventBus();
+  const clientRegistry = new ClientRegistry();
   const processManager = new PiProcessManager(eventBus);
-  const socketServer = new SocketServer();
+  const socketServer = new SocketServer(clientRegistry);
+  const remoteControlManager = new RemoteControlManager(
+    configStore,
+    clientRegistry,
+    (message: string) => logDaemon(message, verbose)
+  );
   const requestHandler = new RequestHandler(
     metadataStore,
     processManager,
     eventBus,
-    socketServer
+    clientRegistry,
+    remoteControlManager
   );
   const healthMonitor = new HealthMonitor(
     processManager,
@@ -123,15 +92,24 @@ export async function main(): Promise<void> {
     metadataStore
   );
 
-  // Wire request handler
   socketServer.setRequestHandler((clientId, request) =>
     requestHandler.handle(clientId, request)
   );
+  socketServer.setDisconnectHandler((clientId) =>
+    requestHandler.handleDisconnect(clientId)
+  );
 
-  // Start socket server
+  remoteControlManager.setRequestHandler(
+    (clientId: string, request: DaemonRequest) =>
+      requestHandler.handle(clientId, request)
+  );
+  remoteControlManager.setDisconnectHandler((clientId: string) =>
+    requestHandler.handleDisconnect(clientId)
+  );
+
   await socketServer.start();
+  await remoteControlManager.start();
 
-  // Write PID file
   try {
     writeFileSync(PID_PATH, String(process.pid), { flag: "wx" });
   } catch (err) {
@@ -141,13 +119,13 @@ export async function main(): Promise<void> {
         "PID file already exists after startup; another daemon instance won the race",
         verbose
       );
+      await remoteControlManager.stop();
       await socketServer.stop();
       process.exit(0);
     }
     throw err;
   }
 
-  // Start health monitor
   healthMonitor.start();
 
   logDaemon(
@@ -155,17 +133,18 @@ export async function main(): Promise<void> {
     verbose
   );
 
-  // Graceful shutdown
   async function shutdown(): Promise<void> {
     logDaemon("Shutting down...", verbose);
     healthMonitor.stop();
     await processManager.killAll();
+    await remoteControlManager.stop();
     await socketServer.stop();
+    clientRegistry.closeAll();
     eventBus.clear();
     try {
       unlinkSync(PID_PATH);
     } catch {
-      /* ignore */
+      // ignore
     }
     logDaemon("Shutdown complete", verbose);
     process.exit(0);
@@ -173,13 +152,9 @@ export async function main(): Promise<void> {
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
-
-  // Keep process alive
   process.stdin?.resume();
 }
 
-// When imported by the standalone binary entry (cli-binary.ts), the caller
-// handles invocation directly to prevent double-start.
 if (process.env._RUBBER_DUCK_SKIP_AUTO_START !== "1") {
   main().catch((err) => {
     appendDaemonLog(

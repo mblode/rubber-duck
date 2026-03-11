@@ -1,0 +1,628 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4B5600013A10000100000001 /* RubberDuckRemoteCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4B5600013A10000100000003 /* RubberDuckRemoteCore */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		3F1A14442F5FC4B200900019 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3F1A142E2F5FC4B100900019 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F1A14352F5FC4B100900019;
+			remoteInfo = RubberDuckIOS;
+		};
+		3F1A144E2F5FC4B200900019 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3F1A142E2F5FC4B100900019 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3F1A14352F5FC4B100900019;
+			remoteInfo = RubberDuckIOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		3F1A14362F5FC4B100900019 /* RubberDuckIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RubberDuckIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F1A14432F5FC4B200900019 /* RubberDuckIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RubberDuckIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3F1A144D2F5FC4B200900019 /* RubberDuckIOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RubberDuckIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		4B5600013A10000100000010 /* Exceptions for "RubberDuckIOS" folder in "RubberDuckIOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 3F1A14352F5FC4B100900019 /* RubberDuckIOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		3F1A14382F5FC4B100900019 /* RubberDuckIOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				4B5600013A10000100000010 /* Exceptions for "RubberDuckIOS" folder in "RubberDuckIOS" target */,
+			);
+			path = RubberDuckIOS;
+			sourceTree = "<group>";
+		};
+		3F1A14462F5FC4B200900019 /* RubberDuckIOSTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RubberDuckIOSTests;
+			sourceTree = "<group>";
+		};
+		3F1A14502F5FC4B200900019 /* RubberDuckIOSUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = RubberDuckIOSUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		3F1A14332F5FC4B100900019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4B5600013A10000100000001 /* RubberDuckRemoteCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A14402F5FC4B200900019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A144A2F5FC4B200900019 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		3F1A142D2F5FC4B100900019 = {
+			isa = PBXGroup;
+			children = (
+				3F1A14382F5FC4B100900019 /* RubberDuckIOS */,
+				3F1A14462F5FC4B200900019 /* RubberDuckIOSTests */,
+				3F1A14502F5FC4B200900019 /* RubberDuckIOSUITests */,
+				3F1A14372F5FC4B100900019 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		3F1A14372F5FC4B100900019 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3F1A14362F5FC4B100900019 /* RubberDuckIOS.app */,
+				3F1A14432F5FC4B200900019 /* RubberDuckIOSTests.xctest */,
+				3F1A144D2F5FC4B200900019 /* RubberDuckIOSUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3F1A14352F5FC4B100900019 /* RubberDuckIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F1A14572F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOS" */;
+			buildPhases = (
+				3F1A14322F5FC4B100900019 /* Sources */,
+				3F1A14332F5FC4B100900019 /* Frameworks */,
+				3F1A14342F5FC4B100900019 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				3F1A14382F5FC4B100900019 /* RubberDuckIOS */,
+			);
+			name = RubberDuckIOS;
+			packageProductDependencies = (
+				4B5600013A10000100000003 /* RubberDuckRemoteCore */,
+			);
+			productName = RubberDuckIOS;
+			productReference = 3F1A14362F5FC4B100900019 /* RubberDuckIOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+		3F1A14422F5FC4B200900019 /* RubberDuckIOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F1A145A2F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOSTests" */;
+			buildPhases = (
+				3F1A143F2F5FC4B200900019 /* Sources */,
+				3F1A14402F5FC4B200900019 /* Frameworks */,
+				3F1A14412F5FC4B200900019 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3F1A14452F5FC4B200900019 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3F1A14462F5FC4B200900019 /* RubberDuckIOSTests */,
+			);
+			name = RubberDuckIOSTests;
+			packageProductDependencies = (
+			);
+			productName = RubberDuckIOSTests;
+			productReference = 3F1A14432F5FC4B200900019 /* RubberDuckIOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		3F1A144C2F5FC4B200900019 /* RubberDuckIOSUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3F1A145D2F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOSUITests" */;
+			buildPhases = (
+				3F1A14492F5FC4B200900019 /* Sources */,
+				3F1A144A2F5FC4B200900019 /* Frameworks */,
+				3F1A144B2F5FC4B200900019 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3F1A144F2F5FC4B200900019 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				3F1A14502F5FC4B200900019 /* RubberDuckIOSUITests */,
+			);
+			name = RubberDuckIOSUITests;
+			packageProductDependencies = (
+			);
+			productName = RubberDuckIOSUITests;
+			productReference = 3F1A144D2F5FC4B200900019 /* RubberDuckIOSUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3F1A142E2F5FC4B100900019 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					3F1A14352F5FC4B100900019 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					3F1A14422F5FC4B200900019 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 3F1A14352F5FC4B100900019;
+					};
+					3F1A144C2F5FC4B200900019 = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 3F1A14352F5FC4B100900019;
+					};
+				};
+			};
+			buildConfigurationList = 3F1A14312F5FC4B100900019 /* Build configuration list for PBXProject "RubberDuckIOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 3F1A142D2F5FC4B100900019;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4B5600013A10000100000002 /* XCLocalSwiftPackageReference "../../SharedPackages/RubberDuckRemoteCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3F1A14372F5FC4B100900019 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3F1A14352F5FC4B100900019 /* RubberDuckIOS */,
+				3F1A14422F5FC4B200900019 /* RubberDuckIOSTests */,
+				3F1A144C2F5FC4B200900019 /* RubberDuckIOSUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3F1A14342F5FC4B100900019 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A14412F5FC4B200900019 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A144B2F5FC4B200900019 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3F1A14322F5FC4B100900019 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A143F2F5FC4B200900019 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		3F1A14492F5FC4B200900019 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3F1A14452F5FC4B200900019 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F1A14352F5FC4B100900019 /* RubberDuckIOS */;
+			targetProxy = 3F1A14442F5FC4B200900019 /* PBXContainerItemProxy */;
+		};
+		3F1A144F2F5FC4B200900019 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3F1A14352F5FC4B100900019 /* RubberDuckIOS */;
+			targetProxy = 3F1A144E2F5FC4B200900019 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		3F1A14552F5FC4B200900019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		3F1A14562F5FC4B200900019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		3F1A14582F5FC4B200900019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RubberDuckIOS/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rubber Duck uses the camera to scan pairing QR codes from your Mac.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Rubber Duck Remote connects to the coding daemon running on your Mac over the local network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rubber Duck needs microphone access for remote voice coding.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		3F1A14592F5FC4B200900019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = RubberDuckIOS/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "Rubber Duck uses the camera to scan pairing QR codes from your Mac.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Rubber Duck Remote connects to the coding daemon running on your Mac over the local network.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Rubber Duck needs microphone access for remote voice coding.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		3F1A145B2F5FC4B200900019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOSTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuckIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuckIOS";
+			};
+			name = Debug;
+		};
+		3F1A145C2F5FC4B200900019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOSTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RubberDuckIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RubberDuckIOS";
+			};
+			name = Release;
+		};
+		3F1A145E2F5FC4B200900019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOSUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RubberDuckIOS;
+			};
+			name = Debug;
+		};
+		3F1A145F2F5FC4B200900019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SZHYT25WLY;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = co.blode.RubberDuckIOSUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RubberDuckIOS;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3F1A14312F5FC4B100900019 /* Build configuration list for PBXProject "RubberDuckIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F1A14552F5FC4B200900019 /* Debug */,
+				3F1A14562F5FC4B200900019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3F1A14572F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F1A14582F5FC4B200900019 /* Debug */,
+				3F1A14592F5FC4B200900019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3F1A145A2F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F1A145B2F5FC4B200900019 /* Debug */,
+				3F1A145C2F5FC4B200900019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3F1A145D2F5FC4B200900019 /* Build configuration list for PBXNativeTarget "RubberDuckIOSUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3F1A145E2F5FC4B200900019 /* Debug */,
+				3F1A145F2F5FC4B200900019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4B5600013A10000100000002 /* XCLocalSwiftPackageReference "../../SharedPackages/RubberDuckRemoteCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../SharedPackages/RubberDuckRemoteCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4B5600013A10000100000003 /* RubberDuckRemoteCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4B5600013A10000100000002 /* XCLocalSwiftPackageReference "../../SharedPackages/RubberDuckRemoteCore" */;
+			productName = RubberDuckRemoteCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 3F1A142E2F5FC4B100900019 /* Project object */;
+}

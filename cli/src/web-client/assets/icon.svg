@@ -1,0 +1,40 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 512 512"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Rubber Duck Remote icon</title>
+  <desc id="desc">Rounded square icon with an abstract duck head and signal ring.</desc>
+  <defs>
+    <linearGradient id="bg" x1="80" x2="432" y1="56" y2="456" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb178" />
+      <stop offset="1" stop-color="#ff8a3d" />
+    </linearGradient>
+    <linearGradient id="ring" x1="160" x2="392" y1="128" y2="352" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f8f4eb" stop-opacity=".96" />
+      <stop offset="1" stop-color="#7be0b8" stop-opacity=".82" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="#101418" />
+  <rect
+    x="54"
+    y="54"
+    width="404"
+    height="404"
+    rx="106"
+    fill="url(#bg)"
+    opacity=".16"
+  />
+  <path
+    d="M170 292c0-71 57-128 128-128 57 0 106 37 123 89 18 3 33 19 33 38 0 21-17 38-38 38h-68c-6 0-11 5-11 11 0 26-21 47-47 47h-65c-31 0-55-25-55-55v-40Z"
+    fill="url(#ring)"
+  />
+  <path
+    d="M274 190c21-22 56-30 88-23-16-27-46-45-80-45-38 0-71 22-86 54 23-7 56-1 78 14Z"
+    fill="#f8f4eb"
+    opacity=".78"
+  />
+  <circle cx="307" cy="253" r="12" fill="#101418" />
+  <path d="M361 259l52 19-52 24-8-18 8-25Z" fill="#101418" />
+</svg>

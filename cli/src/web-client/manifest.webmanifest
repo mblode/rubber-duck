@@ -1,0 +1,19 @@
+{
+  "name": "Rubber Duck Remote",
+  "short_name": "Duck Remote",
+  "description": "Remote iPhone shell for pairing into a live Rubber Duck coding session.",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#101418",
+  "theme_color": "#101418",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

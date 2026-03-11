@@ -8,12 +8,14 @@ import type {
   DaemonResponse,
   PiEvent,
   Session,
+  VoiceStateValue,
 } from "../types.js";
 import { findGitRoot, resolveWorkspacePath } from "../utils.js";
+import type { ClientRegistry } from "./client-registry.js";
 import type { EventBus } from "./event-bus.js";
 import type { MetadataStore } from "./metadata-store.js";
 import type { PiProcessManager } from "./pi-process-manager.js";
-import type { SocketServer } from "./socket-server.js";
+import type { RemoteControlManager } from "./remote-control.js";
 import { executeVoiceTool } from "./voice-tools.js";
 
 interface RequestFor<M extends keyof DaemonRequestMap> {
@@ -24,31 +26,36 @@ interface RequestFor<M extends keyof DaemonRequestMap> {
 
 const startedAt = Date.now();
 
+interface VoiceClientState {
+  clientType: "local-app" | "remote-ios" | "remote-web";
+  sessionId: string | null;
+  state: VoiceStateValue;
+}
+
 export class RequestHandler {
   private readonly metadataStore: MetadataStore;
   private readonly processManager: PiProcessManager;
   private readonly eventBus: EventBus;
-  private readonly socketServer: SocketServer;
-  private voiceClientId: string | null = null;
-  private voiceSessionState:
-    | "idle"
-    | "connecting"
-    | "listening"
-    | "thinking"
-    | "speaking"
-    | "toolRunning" = "idle";
-  private voiceSessionId: string | null = null;
+  private readonly clientRegistry: ClientRegistry;
+  private readonly remoteControlManager: RemoteControlManager;
+  private readonly voiceClients = new Map<string, VoiceClientState>();
 
   constructor(
     metadataStore: MetadataStore,
     processManager: PiProcessManager,
     eventBus: EventBus,
-    socketServer: SocketServer
+    clientRegistry: ClientRegistry,
+    remoteControlManager: RemoteControlManager
   ) {
     this.metadataStore = metadataStore;
     this.processManager = processManager;
     this.eventBus = eventBus;
-    this.socketServer = socketServer;
+    this.clientRegistry = clientRegistry;
+    this.remoteControlManager = remoteControlManager;
+  }
+
+  handleDisconnect(clientId: string): void {
+    this.cleanupClientState(clientId);
   }
 
   private resolveSessionRef(
@@ -78,6 +85,84 @@ export class RequestHandler {
     return this.metadataStore.getAllSessions();
   }
 
+  private getVoiceOwner(
+    sessionId: string
+  ): { clientId: string; voiceState: VoiceClientState } | null {
+    for (const [clientId, voiceState] of this.voiceClients) {
+      if (
+        voiceState.sessionId === sessionId &&
+        voiceState.state !== "idle" &&
+        this.clientRegistry.hasClient(clientId)
+      ) {
+        return { clientId, voiceState };
+      }
+    }
+
+    return null;
+  }
+
+  private findIdleVoiceClient(
+    sessionId: string
+  ): { clientId: string; voiceState: VoiceClientState } | null {
+    let fallback: { clientId: string; voiceState: VoiceClientState } | null =
+      null;
+    for (const [clientId, voiceState] of this.voiceClients) {
+      if (
+        voiceState.state !== "idle" ||
+        !this.clientRegistry.hasClient(clientId)
+      ) {
+        continue;
+      }
+      // Prefer idle client already bound to this session
+      if (voiceState.sessionId === sessionId) {
+        return { clientId, voiceState };
+      }
+      fallback ??= { clientId, voiceState };
+    }
+    return fallback;
+  }
+
+  private notifyVoiceSessionChanged(
+    session: Session,
+    workspacePath: string
+  ): void {
+    for (const [clientId, voiceState] of this.voiceClients) {
+      const shouldNotify =
+        voiceState.state === "idle" ||
+        !voiceState.sessionId ||
+        voiceState.sessionId === session.id;
+
+      if (!shouldNotify) {
+        continue;
+      }
+
+      voiceState.sessionId = session.id;
+      this.clientRegistry.sendToClient(clientId, {
+        event: "voice_session_changed",
+        sessionId: session.id,
+        data: {
+          type: "voice_session_changed" as const,
+          sessionId: session.id,
+          sessionName: session.name,
+          workspacePath,
+        },
+      });
+    }
+  }
+
+  private publishVoiceStatus(sessionId: string, state: VoiceStateValue): void {
+    this.eventBus.publish(sessionId, {
+      type: "extension_ui_request",
+      id: `voice-state-${Date.now()}`,
+      method: "setStatus",
+      message: `voice:${state}`,
+    } as PiEvent);
+  }
+
+  private isLocalControlClient(clientId: string): boolean {
+    return this.clientRegistry.getClientTransport(clientId) === "socket";
+  }
+
   async handle(
     clientId: string,
     request: DaemonRequest
@@ -99,20 +184,28 @@ export class RequestHandler {
           return await this.say(request);
         case "sessions":
           return this.sessions(request);
+        case "workspaces":
+          return this.workspaces(request);
+        case "activate_session":
+          return this.activateSession(request);
         case "abort":
           return await this.abort(request);
         case "doctor":
           return this.doctor(request);
         case "get_state":
           return await this.getState(request);
+        case "remote_status":
+          return this.remoteStatus(clientId, request);
+        case "remote_configure":
+          return await this.remoteConfigure(clientId, request);
         case "voice_connect":
           return this.voiceConnect(clientId, request);
         case "voice_start":
-          return this.voiceStart(request);
+          return this.voiceStart(clientId, request);
         case "voice_tool_call":
-          return await this.voiceToolCall(request);
+          return await this.voiceToolCall(clientId, request);
         case "voice_state":
-          return this.voiceState(request);
+          return this.voiceState(clientId, request);
         default: {
           const _exhaustive: never = request;
           return {
@@ -138,7 +231,7 @@ export class RequestHandler {
       data: {
         version: "0.0.1",
         uptime: Date.now() - startedAt,
-        clients: this.socketServer.getClientCount(),
+        clients: this.clientRegistry.getClientCount(),
       },
     };
   }
@@ -199,19 +292,7 @@ export class RequestHandler {
       lastActiveSessionId: session.id,
     });
 
-    // Notify the Swift voice app immediately so it doesn't have to wait for metadata.json polling
-    if (this.voiceClientId) {
-      this.socketServer.sendToClient(this.voiceClientId, {
-        event: "voice_session_changed",
-        sessionId: session.id,
-        data: {
-          type: "voice_session_changed" as const,
-          sessionId: session.id,
-          sessionName: session.name,
-          workspacePath: workspace.path,
-        },
-      });
-    }
+    this.notifyVoiceSessionChanged(session, workspace.path);
 
     return {
       id: request.id,
@@ -252,12 +333,20 @@ export class RequestHandler {
       sessionId = active.id;
     }
 
+    if (!this.clientRegistry.hasClient(clientId)) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Streaming client is not connected",
+      };
+    }
+
     // Ensure a client only has one active follow subscription at a time.
     this.eventBus.unsubscribe(clientId);
 
     // Subscribe client to events for this session
     this.eventBus.subscribe(clientId, sessionId, (sid, event) => {
-      this.socketServer.sendToClient(clientId, {
+      this.clientRegistry.sendToClient(clientId, {
         event: event.type,
         sessionId: sid,
         data: event,
@@ -319,33 +408,7 @@ export class RequestHandler {
     clientId: string,
     request: RequestFor<"unfollow">
   ): DaemonResponse {
-    const detachedSessionIds = this.eventBus.unsubscribe(clientId);
-
-    const shouldStopVoice =
-      clientId !== this.voiceClientId &&
-      !!this.voiceClientId &&
-      this.voiceSessionState !== "idle" &&
-      !!this.voiceSessionId &&
-      detachedSessionIds.includes(this.voiceSessionId) &&
-      this.eventBus.getSubscriberCount(this.voiceSessionId) === 0;
-
-    if (shouldStopVoice && this.voiceClientId && this.voiceSessionId) {
-      this.socketServer.sendToClient(this.voiceClientId, {
-        event: "voice_stop",
-        sessionId: this.voiceSessionId,
-        data: {
-          type: "voice_stop" as const,
-          reason: "cli_exit" as const,
-          sessionId: this.voiceSessionId,
-        },
-      });
-    }
-
-    if (clientId === this.voiceClientId) {
-      this.voiceClientId = null;
-      this.voiceSessionState = "idle";
-      this.voiceSessionId = null;
-    }
+    this.cleanupClientState(clientId);
     return { id: request.id, ok: true };
   }
 
@@ -413,13 +476,9 @@ export class RequestHandler {
 
     // Route to voice only when the app is connected and actively running a voice session.
     // If the app is connected but idle, route through Pi so `duck say` always works.
-    const voiceCanHandleMessage =
-      !preferPi &&
-      this.voiceClientId &&
-      this.voiceSessionState !== "idle" &&
-      (!this.voiceSessionId || this.voiceSessionId === session.id);
+    const voiceOwner = preferPi ? null : this.getVoiceOwner(session.id);
 
-    if (voiceCanHandleMessage) {
+    if (voiceOwner) {
       // Voice-routed messages don't emit Pi user message events, so synthesize one
       // for CLI rendering consistency.
       this.eventBus.publish(session.id, {
@@ -431,8 +490,8 @@ export class RequestHandler {
         },
       } as PiEvent);
 
-      const voiceClientId = this.voiceClientId;
-      if (!voiceClientId) {
+      if (!this.clientRegistry.hasClient(voiceOwner.clientId)) {
+        this.voiceClients.delete(voiceOwner.clientId);
         return {
           id: request.id,
           ok: false,
@@ -440,11 +499,19 @@ export class RequestHandler {
         };
       }
 
-      this.socketServer.sendToClient(voiceClientId, {
+      const sent = this.clientRegistry.sendToClient(voiceOwner.clientId, {
         event: "voice_say",
         sessionId: session.id,
         data: { text: message },
       });
+      if (!sent) {
+        this.voiceClients.delete(voiceOwner.clientId);
+        return {
+          id: request.id,
+          ok: false,
+          error: "Voice client disconnected",
+        };
+      }
       return {
         id: request.id,
         ok: true,
@@ -503,6 +570,77 @@ export class RequestHandler {
     return { id: request.id, ok: true, data: { sessions: sessionData } };
   }
 
+  private workspaces(request: RequestFor<"workspaces">): DaemonResponse {
+    const activeSessionId = this.metadataStore.getActiveVoiceSessionId();
+    const workspaces = this.metadataStore
+      .getData()
+      .workspaces.map((workspace) => {
+        const sessions = this.metadataStore.getSessionsForWorkspace(
+          workspace.id
+        );
+        return {
+          id: workspace.id,
+          path: workspace.path,
+          lastActiveSessionId: workspace.lastActiveSessionId,
+          sessionCount: sessions.length,
+          sessions: sessions.map((session) => ({
+            id: session.id,
+            name: session.name,
+            isActive: session.id === activeSessionId,
+            isRunning: this.processManager.isRunning(session.id),
+            lastActiveAt: session.lastActiveAt,
+          })),
+        };
+      });
+
+    return { id: request.id, ok: true, data: { workspaces } };
+  }
+
+  private activateSession(
+    request: RequestFor<"activate_session">
+  ): DaemonResponse {
+    const session = this.metadataStore.resolveSession(request.params.sessionId);
+    if (!session) {
+      return {
+        id: request.id,
+        ok: false,
+        error: `Session not found: ${request.params.sessionId}`,
+      };
+    }
+
+    const workspace = this.metadataStore.getWorkspace(session.workspaceId);
+    if (!workspace) {
+      return {
+        id: request.id,
+        ok: false,
+        error: `Workspace not found for session: ${session.id}`,
+      };
+    }
+
+    this.metadataStore.setActiveVoiceSession(session.id);
+    this.metadataStore.updateWorkspace(workspace.id, {
+      lastActiveSessionId: session.id,
+    });
+
+    this.notifyVoiceSessionChanged(session, workspace.path);
+
+    return {
+      id: request.id,
+      ok: true,
+      data: {
+        session: {
+          id: session.id,
+          name: session.name,
+          workspaceId: session.workspaceId,
+        },
+        workspace: {
+          id: workspace.id,
+          path: workspace.path,
+        },
+      },
+    };
+  }
+
   private async abort(request: RequestFor<"abort">): Promise<DaemonResponse> {
     const sessionRef = request.params.sessionId;
 
@@ -539,6 +677,20 @@ export class RequestHandler {
       pid: process.pid,
       uptimeMs: Date.now() - startedAt,
       runningSessionCount: this.processManager.getRunningSessionIds().length,
+    });
+    const remoteStatus = this.remoteControlManager.getStatus();
+    const remoteCheckStatus =
+      remoteStatus.enabled && remoteStatus.listening ? "ok" : "warn";
+    let remoteMessage = "Disabled";
+    if (remoteStatus.enabled && remoteStatus.listening) {
+      remoteMessage = `${String(remoteStatus.httpUrl ?? "remote")} (${String(remoteStatus.connectedClients)} clients)`;
+    } else if (remoteStatus.enabled) {
+      remoteMessage = "Configured but not listening";
+    }
+    checks.push({
+      name: "remote",
+      status: remoteCheckStatus,
+      message: remoteMessage,
     });
 
     return { id: request.id, ok: true, data: { checks } };
@@ -582,15 +734,93 @@ export class RequestHandler {
     };
   }
 
+  private remoteStatus(
+    clientId: string,
+    request: RequestFor<"remote_status">
+  ): DaemonResponse {
+    const includeToken =
+      request.params.includeToken && this.isLocalControlClient(clientId);
+
+    return {
+      id: request.id,
+      ok: true,
+      data: {
+        status: this.remoteControlManager.getStatus(),
+        authToken: includeToken
+          ? this.remoteControlManager.getPersistedAuthToken() ?? undefined
+          : undefined,
+      },
+    };
+  }
+
+  private async remoteConfigure(
+    clientId: string,
+    request: RequestFor<"remote_configure">
+  ): Promise<DaemonResponse> {
+    if (!this.isLocalControlClient(clientId)) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Remote configuration is only available to local clients",
+      };
+    }
+
+    const { issuedToken, status } = await this.remoteControlManager.configure({
+      enabled: request.params.enabled,
+      host: request.params.host,
+      port: request.params.port,
+      rotateToken: request.params.rotateToken,
+      tlsCertPath: request.params.tlsCertPath,
+      tlsKeyPath: request.params.tlsKeyPath,
+      token: request.params.authToken,
+    });
+
+    return {
+      id: request.id,
+      ok: true,
+      data: {
+        status,
+        authToken: request.params.includeToken
+          ? issuedToken ??
+            this.remoteControlManager.getPersistedAuthToken() ??
+            undefined
+          : undefined,
+      },
+    };
+  }
+
   private voiceConnect(
     clientId: string,
     request: RequestFor<"voice_connect">
   ): DaemonResponse {
-    this.voiceClientId = clientId;
-    this.voiceSessionState = "idle";
+    if (!this.clientRegistry.hasClient(clientId)) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Voice client is not connected",
+      };
+    }
 
     const activeSession = this.metadataStore.getActiveVoiceSession();
-    this.voiceSessionId = activeSession?.id ?? null;
+    const clientType = request.params.clientType ?? "local-app";
+
+    if (request.params.takeover) {
+      for (const [otherClientId, voiceState] of this.voiceClients) {
+        if (
+          otherClientId !== clientId &&
+          voiceState.clientType === clientType
+        ) {
+          this.voiceClients.delete(otherClientId);
+        }
+      }
+    }
+
+    this.voiceClients.set(clientId, {
+      clientType,
+      sessionId: activeSession?.id ?? null,
+      state: "idle",
+    });
+
     const workspace = activeSession
       ? this.metadataStore.getWorkspace(activeSession.workspaceId)
       : null;
@@ -607,8 +837,13 @@ export class RequestHandler {
     };
   }
 
-  private voiceStart(request: RequestFor<"voice_start">): DaemonResponse {
-    const session = this.resolveSessionRef(request.params.sessionId);
+  private voiceStart(
+    _clientId: string,
+    request: RequestFor<"voice_start">
+  ): DaemonResponse {
+    const session = this.resolveSessionRef(
+      request.params.sessionId ?? undefined
+    );
     if (!session) {
       return {
         id: request.id,
@@ -617,7 +852,21 @@ export class RequestHandler {
       };
     }
 
-    if (!this.voiceClientId) {
+    const activeOwner = this.getVoiceOwner(session.id);
+    if (activeOwner) {
+      return {
+        id: request.id,
+        ok: true,
+        data: {
+          started: false,
+          reason: "voice_already_active",
+          state: activeOwner.voiceState.state,
+        },
+      };
+    }
+
+    const target = this.findIdleVoiceClient(session.id);
+    if (!target) {
       return {
         id: request.id,
         ok: true,
@@ -625,20 +874,8 @@ export class RequestHandler {
       };
     }
 
-    if (this.voiceSessionState !== "idle") {
-      return {
-        id: request.id,
-        ok: true,
-        data: {
-          started: false,
-          reason: "voice_already_active",
-          state: this.voiceSessionState,
-        },
-      };
-    }
-
-    this.voiceSessionId = session.id;
-    this.socketServer.sendToClient(this.voiceClientId, {
+    target.voiceState.sessionId = session.id;
+    const sent = this.clientRegistry.sendToClient(target.clientId, {
       event: "voice_start",
       sessionId: session.id,
       data: {
@@ -646,6 +883,14 @@ export class RequestHandler {
         sessionId: session.id,
       },
     });
+    if (!sent) {
+      this.voiceClients.delete(target.clientId);
+      return {
+        id: request.id,
+        ok: true,
+        data: { started: false, reason: "voice_not_connected" },
+      };
+    }
 
     return {
       id: request.id,
@@ -655,12 +900,23 @@ export class RequestHandler {
   }
 
   private async voiceToolCall(
+    clientId: string,
     request: RequestFor<"voice_tool_call">
   ): Promise<DaemonResponse> {
-    const { callId, toolName, arguments: argsJson } = request.params;
+    const { callId, toolName, arguments: argsJson, sessionId } = request.params;
+    const voiceClient = this.voiceClients.get(clientId);
+    const requestedSession = sessionId
+      ? this.resolveSessionRef(sessionId)
+      : undefined;
 
-    const activeSession = this.metadataStore.getActiveVoiceSession();
-    if (!activeSession) {
+    let voiceSession = requestedSession;
+    if (!voiceSession && voiceClient?.sessionId) {
+      voiceSession = this.metadataStore.getSession(voiceClient.sessionId);
+    }
+    if (!voiceSession) {
+      voiceSession = this.metadataStore.getActiveVoiceSession();
+    }
+    if (!voiceSession) {
       return {
         id: request.id,
         ok: false,
@@ -668,10 +924,19 @@ export class RequestHandler {
       };
     }
 
-    const activeWorkspace = this.metadataStore.getWorkspace(
-      activeSession.workspaceId
+    const activeOwner = this.getVoiceOwner(voiceSession.id);
+    if (activeOwner && activeOwner.clientId !== clientId) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Voice session is owned by another client",
+      };
+    }
+
+    const voiceWorkspace = this.metadataStore.getWorkspace(
+      voiceSession.workspaceId
     );
-    if (!activeWorkspace) {
+    if (!voiceWorkspace) {
       return {
         id: request.id,
         ok: false,
@@ -679,10 +944,22 @@ export class RequestHandler {
       };
     }
 
+    if (
+      typeof request.params.workspacePath === "string" &&
+      request.params.workspacePath.length > 0 &&
+      resolveWorkspacePath(request.params.workspacePath) !== voiceWorkspace.path
+    ) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Voice tool call workspace does not match the active session",
+      };
+    }
+
     const result = await executeVoiceTool(
       toolName,
       argsJson,
-      activeWorkspace.path
+      voiceWorkspace.path
     );
 
     return {
@@ -692,30 +969,97 @@ export class RequestHandler {
     };
   }
 
-  private voiceState(request: RequestFor<"voice_state">): DaemonResponse {
+  private voiceState(
+    clientId: string,
+    request: RequestFor<"voice_state">
+  ): DaemonResponse {
+    const voiceClient = this.voiceClients.get(clientId);
+    if (!voiceClient) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Voice client is not connected",
+      };
+    }
+
     const { state, sessionId } = request.params;
-    const previousState = this.voiceSessionState;
-    this.voiceSessionState = state;
+    const requestedSession = sessionId
+      ? this.resolveSessionRef(sessionId)
+      : undefined;
+    if (sessionId && !requestedSession) {
+      return {
+        id: request.id,
+        ok: false,
+        error: `Session not found: ${sessionId}`,
+      };
+    }
+
+    const targetSession =
+      requestedSession ??
+      (voiceClient.sessionId
+        ? this.metadataStore.getSession(voiceClient.sessionId)
+        : undefined);
+    if (!targetSession) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "No active session for voice state update",
+      };
+    }
+
+    const activeOwner = this.getVoiceOwner(targetSession.id);
+    if (state !== "idle" && activeOwner && activeOwner.clientId !== clientId) {
+      return {
+        id: request.id,
+        ok: false,
+        error: "Voice session is already owned by another client",
+      };
+    }
+
+    const previousState = voiceClient.state;
+    voiceClient.state = state;
     if (state === "idle") {
-      this.voiceSessionId = sessionId ?? null;
+      voiceClient.sessionId =
+        this.metadataStore.getActiveVoiceSessionId() ?? targetSession.id;
     } else if (previousState === "idle") {
       // Lock voice ownership to the session that became active. While voice is
       // active, ignore later session rebinding from workspace attaches.
-      this.voiceSessionId = sessionId ?? this.voiceSessionId;
+      voiceClient.sessionId = targetSession.id;
     }
 
-    const session = this.resolveSessionRef(sessionId);
-
-    if (session) {
-      // Publish a setStatus event so `duck follow` clients can see voice activity.
-      this.eventBus.publish(session.id, {
-        type: "extension_ui_request",
-        id: `voice-state-${Date.now()}`,
-        method: "setStatus",
-        message: `voice:${state}`,
-      } as PiEvent);
-    }
+    this.publishVoiceStatus(targetSession.id, state);
 
     return { id: request.id, ok: true };
+  }
+
+  private cleanupClientState(clientId: string): void {
+    const detachedSessionIds = this.eventBus.unsubscribe(clientId);
+    const voiceClient = this.voiceClients.get(clientId);
+
+    for (const sessionId of detachedSessionIds) {
+      const activeOwner = this.getVoiceOwner(sessionId);
+      if (
+        activeOwner &&
+        activeOwner.clientId !== clientId &&
+        this.eventBus.getSubscriberCount(sessionId) === 0
+      ) {
+        this.clientRegistry.sendToClient(activeOwner.clientId, {
+          event: "voice_stop",
+          sessionId,
+          data: {
+            type: "voice_stop" as const,
+            reason: "cli_exit" as const,
+            sessionId,
+          },
+        });
+      }
+    }
+
+    if (voiceClient) {
+      this.voiceClients.delete(clientId);
+      if (voiceClient.sessionId && voiceClient.state !== "idle") {
+        this.publishVoiceStatus(voiceClient.sessionId, "idle");
+      }
+    }
   }
 }

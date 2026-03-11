@@ -1,5 +1,6 @@
 import { createConnection, type Socket } from "node:net";
 import { createInterface } from "node:readline";
+import { WebSocket } from "ws";
 import { SOCKET_PATH } from "./constants.js";
 import type {
   DaemonEvent,
@@ -19,46 +20,90 @@ interface PendingRequest {
 
 type DaemonEventHandler = (event: DaemonEvent) => void;
 
+interface ClientTransport {
+  close(): void;
+  onClose(handler: () => void): void;
+  onError(handler: (error: Error) => void): void;
+  onLine(handler: (line: string) => void): void;
+  send(line: string): boolean;
+}
+
+interface DaemonClientConnectOptions {
+  authToken?: string;
+  remoteUrl?: string;
+  socketPath?: string;
+  timeoutMs?: number;
+}
+
+function rawDataToString(raw: import("ws").RawData): string {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (Buffer.isBuffer(raw)) {
+    return raw.toString("utf8");
+  }
+  if (Array.isArray(raw)) {
+    return Buffer.concat(
+      raw.map((value) => (Buffer.isBuffer(value) ? value : Buffer.from(value)))
+    ).toString("utf8");
+  }
+  return Buffer.from(raw).toString("utf8");
+}
+
+function buildRemoteWebSocketUrl(
+  remoteUrl: string
+): string {
+  const url = new URL(remoteUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws";
+  url.search = "";
+  return url.toString();
+}
+
 export class DaemonClient {
-  private readonly socket: Socket;
+  private readonly transport: ClientTransport;
   private readonly pending = new Map<string, PendingRequest>();
   private readonly eventHandlers: DaemonEventHandler[] = [];
   private connected = false;
 
-  private constructor(socket: Socket) {
-    this.socket = socket;
+  private constructor(transport: ClientTransport) {
+    this.transport = transport;
     this.connected = true;
 
-    const rl = createInterface({ input: socket });
-
-    rl.on("line", (line) => {
+    this.transport.onLine((line) => {
       if (!line.trim()) {
         return;
       }
+
       try {
-        const msg = JSON.parse(line) as DaemonMessage;
-        if (isDaemonResponse(msg)) {
-          const pending = this.pending.get(msg.id);
-          if (pending) {
-            clearTimeout(pending.timer);
-            this.pending.delete(msg.id);
-            pending.resolve(msg);
+        const message = JSON.parse(line) as DaemonMessage;
+        if (isDaemonResponse(message)) {
+          const pending = this.pending.get(message.id);
+          if (!pending) {
+            return;
           }
-        } else if (isDaemonEvent(msg)) {
+
+          clearTimeout(pending.timer);
+          this.pending.delete(message.id);
+          pending.resolve(message);
+          return;
+        }
+
+        if (isDaemonEvent(message)) {
           for (const handler of this.eventHandlers) {
             try {
-              handler(msg);
+              handler(message);
             } catch {
-              // Don't let handler errors crash the client
+              // Handler failures should not crash the client transport.
             }
           }
         }
       } catch {
-        // Ignore unparseable lines
+        // Ignore malformed lines from the daemon transport.
       }
     });
 
-    socket.on("close", () => {
+    this.transport.onClose(() => {
       this.connected = false;
       for (const [id, pending] of this.pending) {
         clearTimeout(pending.timer);
@@ -67,18 +112,72 @@ export class DaemonClient {
       }
     });
 
-    socket.on("error", () => {
+    this.transport.onError(() => {
       this.connected = false;
     });
   }
 
+  private static createSocketTransport(socket: Socket): ClientTransport {
+    const rl = createInterface({ input: socket });
+
+    return {
+      send: (line) => socket.write(line),
+      close: () => {
+        rl.close();
+        socket.destroy();
+      },
+      onLine: (handler) => {
+        rl.on("line", handler);
+      },
+      onClose: (handler) => {
+        socket.on("close", handler);
+      },
+      onError: (handler) => {
+        socket.on("error", (error) => handler(error));
+      },
+    };
+  }
+
+  private static createWebSocketTransport(socket: WebSocket): ClientTransport {
+    return {
+      send: (line) => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          return false;
+        }
+        socket.send(line);
+        return true;
+      },
+      close: () => {
+        socket.close();
+      },
+      onLine: (handler) => {
+        socket.on("message", (raw) => {
+          handler(rawDataToString(raw));
+        });
+      },
+      onClose: (handler) => {
+        socket.on("close", handler);
+      },
+      onError: (handler) => {
+        socket.on("error", (error) =>
+          handler(error instanceof Error ? error : new Error(String(error)))
+        );
+      },
+    };
+  }
+
   static connect(
-    options?: number | { socketPath?: string; timeoutMs?: number }
+    options?: number | DaemonClientConnectOptions
   ): Promise<DaemonClient> {
+    if (typeof options === "object" && options.remoteUrl) {
+      return DaemonClient.connectRemote(options);
+    }
+
     const socketPath =
       typeof options === "object" ? options.socketPath : undefined;
     const timeoutMs =
       typeof options === "number" ? options : (options?.timeoutMs ?? 5000);
+
     return new Promise<DaemonClient>((resolve, reject) => {
       const socket = createConnection({ path: socketPath ?? SOCKET_PATH });
 
@@ -89,14 +188,52 @@ export class DaemonClient {
 
       socket.on("connect", () => {
         clearTimeout(timer);
-        resolve(new DaemonClient(socket));
+        resolve(new DaemonClient(DaemonClient.createSocketTransport(socket)));
       });
 
-      socket.on("error", (err) => {
+      socket.on("error", (error) => {
         clearTimeout(timer);
         reject(
           new Error(
-            `Cannot connect to daemon: ${err.message}. Run \`duck\` to start.`
+            `Cannot connect to daemon: ${error.message}. Run \`duck\` to start.`
+          )
+        );
+      });
+    });
+  }
+
+  private static connectRemote(
+    options: DaemonClientConnectOptions
+  ): Promise<DaemonClient> {
+    const timeoutMs = options.timeoutMs ?? 5000;
+    const wsUrl = buildRemoteWebSocketUrl(options.remoteUrl ?? "");
+
+    return new Promise<DaemonClient>((resolve, reject) => {
+      const socket = new WebSocket(wsUrl, {
+        headers: options.authToken
+          ? {
+              Authorization: `Bearer ${options.authToken}`,
+            }
+          : undefined,
+      });
+
+      const timer = setTimeout(() => {
+        socket.close();
+        reject(new Error("Connection to remote daemon timed out"));
+      }, timeoutMs);
+
+      socket.on("open", () => {
+        clearTimeout(timer);
+        resolve(
+          new DaemonClient(DaemonClient.createWebSocketTransport(socket))
+        );
+      });
+
+      socket.on("error", (error) => {
+        clearTimeout(timer);
+        reject(
+          new Error(
+            `Cannot connect to remote daemon: ${error.message}. Check the remote URL and auth token.`
           )
         );
       });
@@ -124,10 +261,10 @@ export class DaemonClient {
 
       this.pending.set(id, { resolve, reject, timer });
 
-      if (!this.socket.write(line)) {
+      if (!this.transport.send(line)) {
         clearTimeout(timer);
         this.pending.delete(id);
-        reject(new Error("Failed to write to daemon socket"));
+        reject(new Error("Failed to write to daemon transport"));
       }
     });
   }
@@ -137,9 +274,9 @@ export class DaemonClient {
   }
 
   removeEventHandler(handler: DaemonEventHandler): void {
-    const idx = this.eventHandlers.indexOf(handler);
-    if (idx !== -1) {
-      this.eventHandlers.splice(idx, 1);
+    const index = this.eventHandlers.indexOf(handler);
+    if (index !== -1) {
+      this.eventHandlers.splice(index, 1);
     }
   }
 
@@ -149,7 +286,8 @@ export class DaemonClient {
 
   close(): void {
     this.connected = false;
-    this.socket.destroy();
+    this.transport.close();
+
     for (const [id, pending] of this.pending) {
       clearTimeout(pending.timer);
       pending.reject(new Error("Client closed"));

@@ -17,6 +17,7 @@ if (isBinaryDaemonMode) {
 import { Command } from "commander";
 import { registerDefaultAction } from "./commands/default.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
+import { registerRemoteCommand } from "./commands/remote.js";
 import { registerSayCommand } from "./commands/say.js";
 import { registerSessionsCommand } from "./commands/sessions.js";
 
@@ -32,6 +33,7 @@ const commandRegistrations = [
   registerSayCommand,
   registerSessionsCommand,
   registerDoctorCommand,
+  registerRemoteCommand,
 ];
 
 for (const registerCommand of commandRegistrations) {

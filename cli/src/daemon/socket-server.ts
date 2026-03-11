@@ -8,24 +8,33 @@ import {
 import { createInterface } from "node:readline";
 import { SOCKET_PATH } from "../constants.js";
 import type { DaemonEvent, DaemonRequest, DaemonResponse } from "../types.js";
-import { generateId } from "../utils.js";
+import type { ClientRegistry } from "./client-registry.js";
 
 type RequestHandler = (
   clientId: string,
   request: DaemonRequest
 ) => Promise<DaemonResponse>;
 
+type DisconnectHandler = (clientId: string) => void;
+
 export class SocketServer {
   private readonly server: Server;
-  private readonly clients = new Map<string, Socket>();
+  private readonly clientRegistry: ClientRegistry;
+  private readonly sockets = new Map<string, Socket>();
   private requestHandler: RequestHandler | null = null;
+  private disconnectHandler: DisconnectHandler | null = null;
 
-  constructor() {
+  constructor(clientRegistry: ClientRegistry) {
+    this.clientRegistry = clientRegistry;
     this.server = createServer((socket) => this.handleConnection(socket));
   }
 
   setRequestHandler(handler: RequestHandler): void {
     this.requestHandler = handler;
+  }
+
+  setDisconnectHandler(handler: DisconnectHandler): void {
+    this.disconnectHandler = handler;
   }
 
   private isSocketReachable(): Promise<boolean> {
@@ -74,10 +83,34 @@ export class SocketServer {
   }
 
   private handleConnection(socket: Socket): void {
-    const clientId = generateId();
-    this.clients.set(clientId, socket);
+    const clientId = this.clientRegistry.registerClient({
+      transport: "socket",
+      send: (message) => {
+        if (!socket.destroyed) {
+          socket.write(`${JSON.stringify(message)}\n`);
+        }
+      },
+      close: () => {
+        if (!socket.destroyed) {
+          socket.destroy();
+        }
+      },
+    });
+    this.sockets.set(clientId, socket);
 
     const rl = createInterface({ input: socket });
+    let closed = false;
+
+    const cleanup = () => {
+      if (closed) {
+        return;
+      }
+      closed = true;
+      this.sockets.delete(clientId);
+      this.clientRegistry.unregisterClient(clientId);
+      rl.close();
+      this.disconnectHandler?.(clientId);
+    };
 
     rl.on("line", async (line) => {
       if (!line.trim()) {
@@ -101,48 +134,28 @@ export class SocketServer {
     });
 
     socket.on("close", () => {
-      this.clients.delete(clientId);
-      rl.close();
-      // Notify that client disconnected (the request handler can clean up subscriptions)
-      if (this.requestHandler) {
-        this.requestHandler(clientId, {
-          id: generateId(),
-          method: "unfollow",
-          params: {},
-        }).catch(() => {
-          // Best-effort cleanup on disconnect
-        });
-      }
+      cleanup();
     });
 
     socket.on("error", () => {
-      this.clients.delete(clientId);
-      rl.close();
+      cleanup();
     });
   }
 
   sendToClient(clientId: string, message: DaemonResponse | DaemonEvent): void {
-    const socket = this.clients.get(clientId);
-    if (!socket || socket.destroyed) {
-      return;
-    }
-    try {
-      socket.write(`${JSON.stringify(message)}\n`);
-    } catch {
-      // Client disconnected
-      this.clients.delete(clientId);
-    }
+    this.clientRegistry.sendToClient(clientId, message);
   }
 
   getClientCount(): number {
-    return this.clients.size;
+    return this.clientRegistry.getClientCount();
   }
 
   stop(): Promise<void> {
     // Close all client connections
-    for (const [id, socket] of this.clients) {
+    for (const [id, socket] of this.sockets) {
       socket.destroy();
-      this.clients.delete(id);
+      this.sockets.delete(id);
+      this.clientRegistry.unregisterClient(id);
     }
 
     return new Promise<void>((resolve) => {
