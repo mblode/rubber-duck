@@ -57,13 +57,12 @@ export default async function HomePage() {
         </h1>
 
         <p className="text-[17px] font-medium text-[#c5c5ca] mt-2.5">
-          Your rubber duck, upgraded.
+          Talk through your code with AI.
         </p>
 
         <p className="text-[14px] font-light leading-[1.7] text-[#98989d] mt-5">
-          Hold Option+D. Speak to your codebase. The agent reads files,
-          <br />
-          edits code, and runs commands — then talks back. Any editor. Your API key.
+          Ask questions out loud, hear answers back, and understand unfamiliar
+          code faster.
         </p>
 
         <div className="inline-flex items-center gap-[14px] mt-7">
