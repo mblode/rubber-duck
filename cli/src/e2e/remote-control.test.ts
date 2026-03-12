@@ -15,18 +15,18 @@ interface Harness {
     unregisterClient(clientId: string): void;
   };
   processManager: { killAll(): Promise<void> };
-  requestHandler: {
-    handle(
-      clientId: string,
-      request: Record<string, unknown>
-    ): Promise<Record<string, unknown>>;
-  };
   remoteControlManager: {
     configure(params: Record<string, unknown>): Promise<{
       issuedToken: string | null;
       status: RemoteControlStatus;
     }>;
     stop(): Promise<void>;
+  };
+  requestHandler: {
+    handle(
+      clientId: string,
+      request: Record<string, unknown>
+    ): Promise<Record<string, unknown>>;
   };
 }
 
@@ -298,9 +298,9 @@ describe("remote daemon control plane", () => {
     });
 
     expect(localStatus.ok).toBe(true);
-    expect(
-      (localStatus.data as { authToken?: string }).authToken
-    ).toBe(configured.issuedToken);
+    expect((localStatus.data as { authToken?: string }).authToken).toBe(
+      configured.issuedToken
+    );
 
     const remoteStatus = await httpRpc(
       configured.status.httpUrl ?? "",
@@ -364,7 +364,8 @@ describe("remote daemon control plane", () => {
     );
 
     expect(attach.status).toBe(200);
-    const sessionId = (attach.body.data as { session: { id: string } }).session.id;
+    const sessionId = (attach.body.data as { session: { id: string } }).session
+      .id;
 
     await writeFile(
       join(sessionsDir, `${sessionId}.jsonl`),

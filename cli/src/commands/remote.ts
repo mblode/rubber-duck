@@ -12,6 +12,8 @@ interface RemoteConfigureResult {
   status: RemoteControlStatus;
 }
 
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+\-.]*:\/\//i;
+
 function parsePort(value: string): number {
   const port = Number.parseInt(value, 10);
   if (!Number.isInteger(port) || port < 0 || port > 65_535) {
@@ -133,7 +135,7 @@ export function normalizePublicUrl(value: string): string {
     throw new Error(`Invalid public URL: ${value}`);
   }
 
-  const hasExplicitScheme = /^[a-z][a-z\d+\-.]*:\/\//i.test(trimmed);
+  const hasExplicitScheme = URL_SCHEME_PATTERN.test(trimmed);
   const normalizedInput = hasExplicitScheme
     ? trimmed
     : `${trimmed.toLowerCase().includes(".ts.net") ? "https" : "http"}://${trimmed}`;
@@ -146,7 +148,9 @@ export function normalizePublicUrl(value: string): string {
     throw new Error(`Invalid public URL: ${value}`);
   }
 
-  if (!(url.protocol === "https:" || url.protocol === "http:") || !url.host) {
+  const hasSupportedProtocol =
+    url.protocol === "https:" || url.protocol === "http:";
+  if (!(hasSupportedProtocol && url.host)) {
     throw new Error(`Invalid public URL: ${value}`);
   }
 
@@ -188,8 +192,11 @@ async function preparePairing(options: {
 }): Promise<RemoteConfigureResult & { publicUrl?: string; pairLink?: string }> {
   let snapshot = await fetchStatus(true);
   const requestedRotate = options.rotateToken ?? false;
-  const needsEnable =
-    !snapshot.status.enabled || !snapshot.status.listening || !snapshot.authToken;
+  const needsEnable = !(
+    snapshot.status.enabled &&
+    snapshot.status.listening &&
+    snapshot.authToken
+  );
 
   if (needsEnable || requestedRotate) {
     snapshot = await configureRemote({
@@ -209,7 +216,7 @@ async function preparePairing(options: {
 
   const publicUrl = options.publicUrl
     ? normalizePublicUrl(options.publicUrl)
-    : inferPublicUrl(snapshot.status) ?? undefined;
+    : (inferPublicUrl(snapshot.status) ?? undefined);
 
   return {
     ...snapshot,
@@ -331,11 +338,15 @@ export function registerRemoteCommand(program: Command): void {
 
         if (result.publicUrl) {
           console.log("");
-          console.log(`${styleText("bold", "Public URL")}   ${result.publicUrl}`);
+          console.log(
+            `${styleText("bold", "Public URL")}   ${result.publicUrl}`
+          );
         }
 
         if (result.pairLink) {
-          console.log(`${styleText("bold", "Pair Link")}    ${result.pairLink}`);
+          console.log(
+            `${styleText("bold", "Pair Link")}    ${result.pairLink}`
+          );
         } else {
           log.warn(
             "No public URL available for pairing. Pass --public-url or use the macOS Settings QR flow."

@@ -747,7 +747,7 @@ export class RequestHandler {
       data: {
         status: this.remoteControlManager.getStatus(),
         authToken: includeToken
-          ? this.remoteControlManager.getPersistedAuthToken() ?? undefined
+          ? (this.remoteControlManager.getPersistedAuthToken() ?? undefined)
           : undefined,
       },
     };
@@ -781,9 +781,9 @@ export class RequestHandler {
       data: {
         status,
         authToken: request.params.includeToken
-          ? issuedToken ??
+          ? (issuedToken ??
             this.remoteControlManager.getPersistedAuthToken() ??
-            undefined
+            undefined)
           : undefined,
       },
     };

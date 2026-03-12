@@ -19,13 +19,13 @@ import type { AddressInfo } from "node:net";
 import { basename, extname, join, normalize } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
+import { APP_SUPPORT, REMOTE_AUTH_TOKEN_PATH } from "../constants.js";
 import type {
   DaemonEvent,
   DaemonRequest,
   DaemonResponse,
   RemoteControlStatus,
 } from "../types.js";
-import { APP_SUPPORT, REMOTE_AUTH_TOKEN_PATH } from "../constants.js";
 import { generateId } from "../utils.js";
 import {
   createRemoteAuthTokenRecord,
@@ -79,6 +79,7 @@ const WEB_CLIENT_ROOT_CANDIDATES = [
 ];
 
 const JSON_CACHE_CONTROL = "no-store";
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 function resolveWebClientRoot(): string | null {
   for (const candidate of WEB_CLIENT_ROOT_CANDIDATES) {
@@ -109,7 +110,7 @@ function contentTypeForPath(filePath: string): string {
 
 function isSafeAssetPath(requestPath: string): boolean {
   const normalizedPath = normalize(requestPath);
-  return !normalizedPath.startsWith("..") && !normalizedPath.includes("../");
+  return !(normalizedPath.startsWith("..") || normalizedPath.includes("../"));
 }
 
 function setCorsHeaders(response: ServerResponse): void {
@@ -418,7 +419,7 @@ export class RemoteControlManager {
     });
   }
 
-  private isAuthorized(request: IncomingMessage, requestUrl?: URL): boolean {
+  private isAuthorized(request: IncomingMessage, _requestUrl?: URL): boolean {
     const authHeader = request.headers.authorization;
     const bearerToken = authHeader?.startsWith("Bearer ")
       ? authHeader.slice("Bearer ".length).trim()
@@ -452,7 +453,10 @@ export class RemoteControlManager {
       return;
     }
 
-    if (request.method === "GET" && this.isWebClientRequest(requestUrl.pathname)) {
+    if (
+      request.method === "GET" &&
+      this.isWebClientRequest(requestUrl.pathname)
+    ) {
       this.serveWebClientAsset(requestUrl, response);
       return;
     }
@@ -492,10 +496,7 @@ export class RemoteControlManager {
     return pathname.startsWith("/assets/") || pathname.includes(".");
   }
 
-  private serveWebClientAsset(
-    requestUrl: URL,
-    response: ServerResponse
-  ): void {
+  private serveWebClientAsset(requestUrl: URL, response: ServerResponse): void {
     const webClientRoot = resolveWebClientRoot();
     if (!webClientRoot) {
       this.writeJson(response, 404, {
@@ -570,10 +571,10 @@ export class RemoteControlManager {
       10
     );
     const limit = Number.isFinite(limitRaw)
-      ? Math.min(Math.max(limitRaw, 1), 1_000)
+      ? Math.min(Math.max(limitRaw, 1), 1000)
       : 200;
 
-    if (!sessionId || !/^[A-Za-z0-9_-]+$/.test(sessionId)) {
+    if (!(sessionId && SESSION_ID_PATTERN.test(sessionId))) {
       this.writeJson(response, 400, {
         error: "A valid sessionId query parameter is required",
       });

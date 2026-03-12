@@ -50,9 +50,7 @@ function rawDataToString(raw: import("ws").RawData): string {
   return Buffer.from(raw).toString("utf8");
 }
 
-function buildRemoteWebSocketUrl(
-  remoteUrl: string
-): string {
+function buildRemoteWebSocketUrl(remoteUrl: string): string {
   const url = new URL(remoteUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
