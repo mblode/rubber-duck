@@ -21,6 +21,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     title: "Rubber Duck",
   },
+  verification: {
+    google: "mFwyBIbXTaKK4uF_NA0MzVWFyY40hPgBjFObg3rje04",
+  },
 };
 
 export default function RootLayout({
