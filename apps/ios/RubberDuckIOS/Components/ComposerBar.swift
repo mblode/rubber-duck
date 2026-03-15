@@ -6,33 +6,51 @@ struct ComposerBar: View {
     let onSend: () -> Void
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: Theme.spacing8) {
+        HStack(alignment: .bottom, spacing: Theme.spacing12) {
             TextField("Send a prompt...", text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...4)
-                .padding(Theme.spacing12)
+                .submitLabel(.send)
+                .onSubmit(submitIfPossible)
+                .padding(.horizontal, Theme.spacing12)
+                .padding(.vertical, 10)
+                .accessibilityIdentifier("composer-text-field")
                 .background(
                     RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
-                        .fill(Color(.secondarySystemGroupedBackground))
+                        .fill(Color(.secondarySystemBackground))
                 )
 
-            Button(action: onSend) {
-                Image(systemName: "paperplane.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Theme.accent))
-                    .foregroundStyle(.white)
+            Button(action: submitIfPossible) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(Theme.accent)
             }
+            .frame(minWidth: 44, minHeight: 44)
+            .accessibilityIdentifier("composer-send-button")
+            .accessibilityLabel("Send")
             .disabled(isSendDisabled)
             .opacity(isSendDisabled ? 0.4 : 1.0)
         }
         .padding(.horizontal, Theme.spacing16)
-        .padding(.vertical, Theme.spacing8)
-        .background(Color(.systemBackground))
+        .padding(.top, Theme.spacing8)
+        .padding(.bottom, Theme.spacing8)
+        .background(.bar)
+        .overlay(alignment: .top) {
+            Divider()
+        }
     }
 
     private var isSendDisabled: Bool {
         isDisabled || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func submitIfPossible() {
+        guard !isSendDisabled else {
+            return
+        }
+
+        onSend()
     }
 }
 

@@ -14,7 +14,7 @@ struct VoiceTabStateTests {
             onPressStart: {},
             onPressEnd: {}
         )
-        #expect(button.buttonLabel == "Hold")
+        #expect(button.buttonLabel == "Talk")
     }
 
     @Test("TalkButton label for listening state")
@@ -27,7 +27,7 @@ struct VoiceTabStateTests {
             onPressStart: {},
             onPressEnd: {}
         )
-        #expect(button.buttonLabel == "Hold")
+        #expect(button.buttonLabel == "Listening")
     }
 
     @Test("TalkButton label for thinking state")
@@ -66,7 +66,7 @@ struct VoiceTabStateTests {
             onPressStart: {},
             onPressEnd: {}
         )
-        #expect(button.buttonLabel == "Tool")
+        #expect(button.buttonLabel == "Working")
     }
 
     @Test("TalkButton label for preparing state")
@@ -79,7 +79,7 @@ struct VoiceTabStateTests {
             onPressStart: {},
             onPressEnd: {}
         )
-        #expect(button.buttonLabel == "Linking")
+        #expect(button.buttonLabel == "Connecting")
     }
 
     @Test("TalkButton icon when not pressing")
@@ -105,6 +105,6 @@ struct VoiceTabStateTests {
             onPressStart: {},
             onPressEnd: {}
         )
-        #expect(button.iconName == "waveform.circle.fill")
+        #expect(button.iconName == "waveform")
     }
 }

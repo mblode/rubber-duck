@@ -4,27 +4,42 @@ import SwiftUI
 struct StatusIndicator: View {
     let label: String
     let color: Color
+    let systemImage: String
 
     var body: some View {
-        HStack(spacing: Theme.spacing4) {
-            Circle()
-                .fill(color)
-                .frame(width: 6, height: 6)
-
+        Label {
             Text(label)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Theme.secondaryLabel)
+                .font(.caption.weight(.semibold))
+        } icon: {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.bold))
         }
+        .labelStyle(.titleAndIcon)
+        .foregroundStyle(color)
+        .padding(.horizontal, Theme.spacing8)
+        .padding(.vertical, Theme.spacing4)
+        .background(
+            Capsule(style: .continuous)
+                .fill(color.opacity(0.14))
+        )
     }
 }
 
 extension StatusIndicator {
     static func connectionStatus(_ state: RemoteConnectionState) -> StatusIndicator {
-        StatusIndicator(label: statusLabel(for: state), color: statusColor(for: state))
+        StatusIndicator(
+            label: statusLabel(for: state),
+            color: statusColor(for: state),
+            systemImage: statusImage(for: state)
+        )
     }
 
     static func voiceStatus(_ state: RemoteDaemonVoiceState) -> StatusIndicator {
-        StatusIndicator(label: voiceLabel(for: state), color: voiceColor(for: state))
+        StatusIndicator(
+            label: voiceLabel(for: state),
+            color: voiceColor(for: state),
+            systemImage: voiceImage(for: state)
+        )
     }
 
     static func statusLabel(for state: RemoteConnectionState) -> String {
@@ -47,6 +62,16 @@ extension StatusIndicator {
         }
     }
 
+    static func statusImage(for state: RemoteConnectionState) -> String {
+        switch state {
+        case .idle: "pause.circle.fill"
+        case .pairing: "link.badge.plus"
+        case .connecting: "arrow.trianglehead.clockwise"
+        case .connected: "checkmark.circle.fill"
+        case .failed: "exclamationmark.triangle.fill"
+        }
+    }
+
     static func voiceLabel(for state: RemoteDaemonVoiceState) -> String {
         switch state {
         case .idle: "Ready"
@@ -66,6 +91,17 @@ extension StatusIndicator {
         case .thinking: Theme.statusOrange
         case .speaking: Theme.accent
         case .toolRunning: Color(.systemBlue)
+        }
+    }
+
+    static func voiceImage(for state: RemoteDaemonVoiceState) -> String {
+        switch state {
+        case .idle: "waveform.badge.mic"
+        case .connecting: "bolt.horizontal.circle.fill"
+        case .listening: "waveform"
+        case .thinking: "sparkles"
+        case .speaking: "speaker.wave.2.fill"
+        case .toolRunning: "hammer.circle.fill"
         }
     }
 }

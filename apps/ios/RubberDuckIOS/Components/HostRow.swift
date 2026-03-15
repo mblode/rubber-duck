@@ -7,8 +7,8 @@ struct HostRow: View {
 
     var body: some View {
         HStack(spacing: Theme.spacing12) {
-            Image(systemName: "desktopcomputer")
-                .font(.title3)
+            Image(systemName: isSelected ? "desktopcomputer.circle.fill" : "desktopcomputer")
+                .font(.title2)
                 .foregroundStyle(isSelected ? Theme.accent : Theme.secondaryLabel)
                 .frame(width: 32)
 
@@ -20,17 +20,22 @@ struct HostRow: View {
                 Text(host.subtitle)
                     .font(.footnote)
                     .foregroundStyle(Theme.secondaryLabel)
+
+                Text(host.lastConnectedAt ?? host.pairedAt, style: .relative)
+                    .font(.caption2)
+                    .foregroundStyle(Theme.tertiaryLabel)
             }
 
             Spacer()
 
             if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.body.weight(.semibold))
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.title3)
                     .foregroundStyle(Theme.accent)
             }
         }
-        .padding(.vertical, Theme.spacing4)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 

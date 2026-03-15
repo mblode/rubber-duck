@@ -8,28 +8,28 @@ struct EmptyStateView: View {
     var action: (() -> Void)?
 
     var body: some View {
-        VStack(spacing: Theme.spacing16) {
-            Image(systemName: icon)
-                .font(.system(size: 48))
-                .foregroundStyle(Theme.secondaryLabel)
-
-            Text(title)
-                .font(.title3.bold())
-                .foregroundStyle(Theme.label)
-
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundStyle(Theme.secondaryLabel)
-                .multilineTextAlignment(.center)
-
+        Group {
             if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.borderedProminent)
-                    .tint(Theme.accent)
+                ContentUnavailableView {
+                    Label(title, systemImage: icon)
+                } description: {
+                    Text(subtitle)
+                } actions: {
+                    Button(actionTitle, action: action)
+                        .accessibilityIdentifier("empty-state-action-button")
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                }
+            } else {
+                ContentUnavailableView(
+                    title,
+                    systemImage: icon,
+                    description: Text(subtitle)
+                )
             }
         }
-        .padding(Theme.spacing32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, Theme.spacing24)
     }
 }
 

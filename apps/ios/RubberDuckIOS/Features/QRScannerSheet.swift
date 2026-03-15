@@ -9,7 +9,7 @@ struct QRScannerSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 QRCodeScannerView(
                     onCode: { code in
                         onScan(code)
@@ -21,14 +21,21 @@ struct QRScannerSheet: View {
                 )
                 .ignoresSafeArea()
 
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(.white.opacity(0.9), lineWidth: 2)
+                    .frame(width: 260, height: 260)
+                    .shadow(color: .black.opacity(0.3), radius: 12, y: 8)
+            }
+            .background(.black)
+            .safeAreaInset(edge: .bottom) {
                 VStack(alignment: .leading, spacing: Theme.spacing8) {
-                    Text("Scan the Mac pairing QR")
+                    Label("Scan the pairing QR on your Mac", systemImage: "qrcode.viewfinder")
                         .font(.headline)
                         .foregroundStyle(.white)
 
-                    Text("Frame the QR code from your Mac. Rubber Duck will fill in the host and access token automatically.")
+                    Text("Frame the code inside the guide. Rubber Duck will fill in the Mac address and access token automatically.")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(.white.opacity(0.82))
 
                     if let scannerError {
                         Text(scannerError)
@@ -44,7 +51,8 @@ struct QRScannerSheet: View {
                 )
                 .padding()
             }
-            .background(.black)
+            .navigationTitle("Scan QR Code")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismissSheet() }

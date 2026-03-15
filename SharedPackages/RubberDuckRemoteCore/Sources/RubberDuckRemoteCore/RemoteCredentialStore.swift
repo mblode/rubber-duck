@@ -25,10 +25,23 @@ public enum RemoteCredentialStoreError: Error, LocalizedError, Equatable, Sendab
 }
 
 public struct RemoteCredentialStore: Sendable {
-    private let service: String
+    private enum Backend: Sendable {
+        case keychain(service: String)
+        case file(URL)
+    }
+
+    private struct FilePayload: Codable, Sendable {
+        var tokens: [String: String]
+    }
+
+    private let backend: Backend
 
     public init(service: String = "co.blode.rubber-duck.remote-daemon") {
-        self.service = service
+        backend = .keychain(service: service)
+    }
+
+    public init(fileURL: URL) {
+        backend = .file(fileURL)
     }
 
     public func saveToken(_ token: String, for hostID: String) throws {
@@ -38,58 +51,109 @@ public struct RemoteCredentialStore: Sendable {
             throw RemoteCredentialStoreError.invalidToken
         }
 
-        let baseQuery = credentialQuery(for: hostID)
-        let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
-        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
-            throw RemoteCredentialStoreError.deleteFailed(deleteStatus)
-        }
+        switch backend {
+        case .keychain(let service):
+            let baseQuery = credentialQuery(for: hostID, service: service)
+            let deleteStatus = SecItemDelete(baseQuery as CFDictionary)
+            if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+                throw RemoteCredentialStoreError.deleteFailed(deleteStatus)
+            }
 
-        var addQuery = baseQuery
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+            var addQuery = baseQuery
+            addQuery[kSecValueData as String] = data
+            addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
 
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw RemoteCredentialStoreError.saveFailed(status)
+            let status = SecItemAdd(addQuery as CFDictionary, nil)
+            guard status == errSecSuccess else {
+                throw RemoteCredentialStoreError.saveFailed(status)
+            }
+
+        case .file(let fileURL):
+            var payload = try loadFilePayload(from: fileURL)
+            payload.tokens[hostID] = normalizedToken
+            try saveFilePayload(payload, to: fileURL)
         }
     }
 
     public func loadToken(for hostID: String) throws -> String {
-        var query = credentialQuery(for: hostID)
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        switch backend {
+        case .keychain(let service):
+            var query = credentialQuery(for: hostID, service: service)
+            query[kSecReturnData as String] = true
+            query[kSecMatchLimit as String] = kSecMatchLimitOne
 
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+            var result: AnyObject?
+            let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-        if status == errSecItemNotFound {
-            throw RemoteCredentialStoreError.missingToken
+            if status == errSecItemNotFound {
+                throw RemoteCredentialStoreError.missingToken
+            }
+
+            guard status == errSecSuccess, let data = result as? Data else {
+                throw RemoteCredentialStoreError.loadFailed(status)
+            }
+
+            guard let token = String(data: data, encoding: .utf8),
+                  !token.isEmpty else {
+                throw RemoteCredentialStoreError.invalidToken
+            }
+
+            return token
+
+        case .file(let fileURL):
+            let payload = try loadFilePayload(from: fileURL)
+            guard let token = payload.tokens[hostID] else {
+                throw RemoteCredentialStoreError.missingToken
+            }
+            return token
         }
-
-        guard status == errSecSuccess, let data = result as? Data else {
-            throw RemoteCredentialStoreError.loadFailed(status)
-        }
-
-        guard let token = String(data: data, encoding: .utf8),
-              !token.isEmpty else {
-            throw RemoteCredentialStoreError.invalidToken
-        }
-
-        return token
     }
 
     public func deleteToken(for hostID: String) throws {
-        let status = SecItemDelete(credentialQuery(for: hostID) as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
-            throw RemoteCredentialStoreError.deleteFailed(status)
+        switch backend {
+        case .keychain(let service):
+            let status = SecItemDelete(credentialQuery(for: hostID, service: service) as CFDictionary)
+            if status != errSecSuccess && status != errSecItemNotFound {
+                throw RemoteCredentialStoreError.deleteFailed(status)
+            }
+
+        case .file(let fileURL):
+            var payload = try loadFilePayload(from: fileURL)
+            payload.tokens.removeValue(forKey: hostID)
+
+            if payload.tokens.isEmpty {
+                if FileManager.default.fileExists(atPath: fileURL.path) {
+                    try FileManager.default.removeItem(at: fileURL)
+                }
+            } else {
+                try saveFilePayload(payload, to: fileURL)
+            }
         }
     }
 
-    private func credentialQuery(for hostID: String) -> [String: Any] {
+    private func credentialQuery(for hostID: String, service: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: hostID,
         ]
+    }
+
+    private func loadFilePayload(from fileURL: URL) throws -> FilePayload {
+        guard let data = try? Data(contentsOf: fileURL) else {
+            return FilePayload(tokens: [:])
+        }
+
+        return try JSONDecoder().decode(FilePayload.self, from: data)
+    }
+
+    private func saveFilePayload(_ payload: FilePayload, to fileURL: URL) throws {
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(payload)
+        try data.write(to: fileURL, options: .atomic)
     }
 }

@@ -5,39 +5,16 @@ struct MessageRow: View {
     let entry: RemoteConversationEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: Theme.spacing8) {
-            Image(systemName: roleIcon)
-                .font(.caption)
-                .foregroundStyle(roleTint)
-                .frame(width: 20, alignment: .center)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: Theme.spacing4) {
-                HStack(spacing: Theme.spacing8) {
-                    Text(roleTitle)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(roleTint)
-
-                    if let toolName = entry.metadata["tool"] {
-                        Text(toolName)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Theme.tertiaryLabel)
-                    }
-
-                    Spacer()
-
-                    Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.caption2)
-                        .foregroundStyle(Theme.tertiaryLabel)
-                }
-
-                Text(entry.text)
-                    .font(.body)
-                    .foregroundStyle(Theme.label)
-                    .textSelection(.enabled)
+        Group {
+            if entry.role == .tool || entry.role == .status {
+                eventRow
+            } else {
+                bubbleRow
             }
         }
-        .padding(.vertical, Theme.spacing4)
+        .listRowInsets(EdgeInsets(top: 6, leading: Theme.spacing16, bottom: 6, trailing: Theme.spacing16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
     }
 
     var roleTitle: String {
@@ -65,6 +42,86 @@ struct MessageRow: View {
         case .tool: Color(.systemBlue)
         case .status: Theme.secondaryLabel
         }
+    }
+
+    private var bubbleRow: some View {
+        VStack(alignment: isUserMessage ? .trailing : .leading, spacing: Theme.spacing4) {
+            HStack {
+                if isUserMessage {
+                    Spacer(minLength: 48)
+                }
+
+                Text(entry.text)
+                    .font(.body)
+                    .foregroundStyle(isUserMessage ? Color.white : Theme.label)
+                    .textSelection(.enabled)
+                    .padding(.horizontal, Theme.spacing12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(isUserMessage ? Theme.accent : Color(.secondarySystemGroupedBackground))
+                    )
+
+                if !isUserMessage {
+                    Spacer(minLength: 48)
+                }
+            }
+
+            HStack(spacing: Theme.spacing8) {
+                if isUserMessage {
+                    Spacer()
+                }
+
+                Label(roleTitle, systemImage: roleIcon)
+                    .labelStyle(.titleAndIcon)
+
+                Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+
+                if !isUserMessage {
+                    Spacer()
+                }
+            }
+            .font(.caption2)
+            .foregroundStyle(Theme.tertiaryLabel)
+        }
+        .padding(.vertical, Theme.spacing4)
+    }
+
+    private var eventRow: some View {
+        VStack(alignment: .leading, spacing: Theme.spacing8) {
+            HStack(spacing: Theme.spacing8) {
+                Label(roleTitle, systemImage: roleIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(roleTint)
+
+                if let toolName = entry.metadata["tool"] {
+                    Text(toolName.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.tertiaryLabel)
+                }
+
+                Spacer()
+
+                Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(Theme.tertiaryLabel)
+            }
+
+            Text(entry.text)
+                .font(entry.role == .tool ? .system(.footnote, design: .monospaced) : .footnote)
+                .foregroundStyle(Theme.label)
+                .textSelection(.enabled)
+        }
+        .padding(Theme.spacing12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+    }
+
+    private var isUserMessage: Bool {
+        entry.role == .user
     }
 }
 

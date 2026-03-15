@@ -186,6 +186,18 @@ function buildPairLink(publicUrl: string, authToken: string): string {
   return pairUrl.toString();
 }
 
+function assertRemoteListening(status: RemoteControlStatus): void {
+  if (status.listening) {
+    return;
+  }
+
+  if (status.lastError) {
+    throw new Error(`Remote control is not listening: ${status.lastError}`);
+  }
+
+  throw new Error("Remote control is not listening.");
+}
+
 async function preparePairing(options: {
   publicUrl?: string;
   rotateToken?: boolean;
@@ -213,6 +225,8 @@ async function preparePairing(options: {
   if (!snapshot.authToken) {
     throw new Error("Remote auth token is unavailable");
   }
+
+  assertRemoteListening(snapshot.status);
 
   const publicUrl = options.publicUrl
     ? normalizePublicUrl(options.publicUrl)

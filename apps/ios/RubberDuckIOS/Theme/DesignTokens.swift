@@ -3,7 +3,7 @@ import SwiftUI
 enum Theme {
     // MARK: - Colors
 
-    static let accent = Color(red: 0.94, green: 0.62, blue: 0.35)
+    static let accent = Color.accentColor
 
     static let background = Color(.systemBackground)
     static let secondaryBackground = Color(.secondarySystemBackground)

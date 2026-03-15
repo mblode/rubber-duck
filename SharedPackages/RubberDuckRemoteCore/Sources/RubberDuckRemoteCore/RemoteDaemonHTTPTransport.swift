@@ -576,7 +576,8 @@ public actor RemoteDaemonHTTPTransport: RemoteDaemonTransport {
             }
             return events
         } catch let error as RemoteDaemonError {
-            if case .messageFailed(let message) = error, message.contains("HTTP 404") {
+            if case .messageFailed(let message) = error,
+               message.contains("HTTP 404") || message.contains("History not found for session") {
                 return nil
             }
             throw error

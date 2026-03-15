@@ -7,37 +7,48 @@ struct SessionRow: View {
 
     var body: some View {
         HStack(spacing: Theme.spacing12) {
+            Image(systemName: isSelected ? "folder.fill" : "folder")
+                .font(.title3)
+                .foregroundStyle(isSelected ? Theme.accent : Theme.secondaryLabel)
+                .frame(width: 28)
+
             VStack(alignment: .leading, spacing: Theme.spacing4) {
                 Text(session.name)
                     .font(.body.weight(.medium))
                     .foregroundStyle(Theme.label)
 
-                Text(abbreviatedPath)
+                Text(session.workspacePath)
                     .font(.footnote)
                     .foregroundStyle(Theme.secondaryLabel)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: Theme.spacing4) {
-                Circle()
-                    .fill(session.isRunning ? Theme.statusGreen : Color(.quaternaryLabel))
-                    .frame(width: 8, height: 8)
+                HStack(spacing: Theme.spacing4) {
+                    Image(systemName: session.isRunning ? "circle.fill" : "pause.circle.fill")
+                        .font(.system(size: session.isRunning ? 8 : 12))
+                    Text(session.isRunning ? "Live" : "Stopped")
+                }
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(session.isRunning ? Theme.statusGreen : Theme.tertiaryLabel)
 
                 Text(session.lastActiveAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption2)
                     .foregroundStyle(Theme.tertiaryLabel)
+
+                if isSelected {
+                    Label("Current", systemImage: "checkmark.circle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Theme.accent)
+                }
             }
         }
-        .padding(.vertical, Theme.spacing4)
+        .padding(.vertical, 6)
         .listRowBackground(isSelected ? Theme.accent.opacity(0.1) : Color.clear)
-    }
-
-    private var abbreviatedPath: String {
-        let path = session.workspacePath
-        guard let lastComponent = path.split(separator: "/").last else { return path }
-        return String(lastComponent)
+        .contentShape(Rectangle())
     }
 }
 

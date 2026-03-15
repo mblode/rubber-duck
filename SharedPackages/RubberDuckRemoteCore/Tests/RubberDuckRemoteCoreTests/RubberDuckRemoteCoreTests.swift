@@ -90,6 +90,171 @@ final class RubberDuckRemoteCoreTests: XCTestCase {
         XCTAssertEqual(loaded.hosts.first?.pairingCodeHint, "OKEN")
     }
 
+    func testFileBackedRemoteCredentialStorePersistsAndDeletesTokens() throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let credentialURL = tempDirectory.appendingPathComponent("remote-credentials.json")
+        let credentialStore = RemoteCredentialStore(fileURL: credentialURL)
+
+        try credentialStore.saveToken("DUCK123", for: "duck.local")
+        XCTAssertEqual(try credentialStore.loadToken(for: "duck.local"), "DUCK123")
+
+        let persistedData = try Data(contentsOf: credentialURL)
+        let persistedString = String(decoding: persistedData, as: UTF8.self)
+        XCTAssertTrue(persistedString.contains("DUCK123"))
+
+        try credentialStore.deleteToken(for: "duck.local")
+        XCTAssertThrowsError(try credentialStore.loadToken(for: "duck.local")) { error in
+            XCTAssertEqual(error as? RemoteCredentialStoreError, .missingToken)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: credentialURL.path))
+    }
+
+    func testHTTPTransportFallsBackToStateWhenSessionHistoryIsMissing() async throws {
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+
+        let credentialURL = tempDirectory.appendingPathComponent("remote-credentials.json")
+        let credentialStore = RemoteCredentialStore(fileURL: credentialURL)
+        let host = PairedRemoteHost(
+            id: "http://duck.local:43111",
+            displayName: "Duck Local",
+            baseURL: try XCTUnwrap(URL(string: "http://duck.local:43111")),
+            authToken: "",
+            pairingCodeHint: "1234"
+        )
+        try credentialStore.saveToken("DUCK123", for: host.id)
+
+        let sessionConfiguration = URLSessionConfiguration.ephemeral
+        sessionConfiguration.protocolClasses = [StubURLProtocol.self]
+        let session = URLSession(configuration: sessionConfiguration)
+
+        StubURLProtocol.handler = { request in
+            guard let url = request.url else {
+                throw URLError(.badURL)
+            }
+
+            switch url.path {
+            case "/status":
+                return StubURLProtocol.response(
+                    url: url,
+                    statusCode: 200,
+                    json: [
+                        "connectedClients": 0,
+                        "enabled": true,
+                        "host": "duck.local",
+                        "httpUrl": "http://duck.local:43111",
+                        "listening": true,
+                        "port": 43_111,
+                        "protocol": "http",
+                        "tlsEnabled": false,
+                        "tokenConfigured": true,
+                        "wsUrl": "ws://duck.local:43111/ws"
+                    ]
+                )
+
+            case "/history":
+                return StubURLProtocol.response(
+                    url: url,
+                    statusCode: 404,
+                    json: [
+                        "error": "History not found for session session-1"
+                    ]
+                )
+
+            case "/rpc":
+                let rpcBody = try XCTUnwrap(request.httpBody)
+                let payload = try XCTUnwrap(
+                    JSONSerialization.jsonObject(with: rpcBody) as? [String: Any]
+                )
+                let requestID = payload["id"] as? String ?? "rpc-id"
+                let method = payload["method"] as? String ?? ""
+
+                switch method {
+                case "sessions":
+                    return StubURLProtocol.response(
+                        url: url,
+                        statusCode: 200,
+                        json: [
+                            "id": requestID,
+                            "ok": true,
+                            "data": [
+                                "sessions": [
+                                    [
+                                        "id": "session-1",
+                                        "name": "duck-1",
+                                        "workspacePath": "/tmp/workspace",
+                                        "isActive": true,
+                                        "isRunning": true,
+                                        "lastActiveAt": "2026-03-12T05:00:00Z"
+                                    ]
+                                ]
+                            ]
+                        ]
+                    )
+
+                case "get_state":
+                    return StubURLProtocol.response(
+                        url: url,
+                        statusCode: 200,
+                        json: [
+                            "id": requestID,
+                            "ok": true,
+                            "data": [
+                                "sessionId": "session-1",
+                                "sessionName": "duck-1",
+                                "isRunning": true,
+                                "piState": [
+                                    "isStreaming": false,
+                                    "messageCount": 0,
+                                    "model": "gpt-4o-mini",
+                                    "pendingMessageCount": 0,
+                                    "sessionId": "session-1",
+                                    "sessionName": "duck-1",
+                                    "thinkingLevel": "off"
+                                ]
+                            ]
+                        ]
+                    )
+
+                default:
+                    return StubURLProtocol.response(
+                        url: url,
+                        statusCode: 400,
+                        json: [
+                            "error": "Unexpected RPC method \(method)"
+                        ]
+                    )
+                }
+
+            default:
+                return StubURLProtocol.response(
+                    url: url,
+                    statusCode: 404,
+                    json: [
+                        "error": "Unhandled path \(url.path)"
+                    ]
+                )
+            }
+        }
+
+        let transport = RemoteDaemonHTTPTransport(
+            session: session,
+            credentialStore: credentialStore
+        )
+
+        let snapshot = try await transport.loadSnapshot(for: host)
+
+        XCTAssertEqual(snapshot.activeSession?.id, "session-1")
+        XCTAssertEqual(snapshot.sessions.count, 1)
+        XCTAssertTrue(
+            snapshot.conversation.contains(where: { $0.text.contains("History is empty") })
+        )
+    }
+
     @MainActor
     func testAppModelBootRestoresSelectedHostAndSession() async throws {
         let tempDirectory = FileManager.default.temporaryDirectory
@@ -175,5 +340,50 @@ final class RubberDuckRemoteCoreTests: XCTestCase {
 
         XCTAssertEqual(model.activeHost?.baseURL.absoluteString, "http://100.96.185.34:43111")
         XCTAssertNil(model.lastError)
+    }
+}
+
+private final class StubURLProtocol: URLProtocol, @unchecked Sendable {
+    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let handler = Self.handler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try handler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {}
+
+    static func response(
+        url: URL,
+        statusCode: Int,
+        json: [String: Any]
+    ) -> (HTTPURLResponse, Data) {
+        let data = try! JSONSerialization.data(withJSONObject: json, options: [.sortedKeys])
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, data)
     }
 }

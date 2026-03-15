@@ -8,6 +8,9 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build` — Build from CLI
 - `xcodebuild -scheme Commandment -configuration Release -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build` — Release build
 - `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' test -derivedDataPath /tmp/rubber-duck-build` — Run tests
+- `xcodebuild -project apps/ios/RubberDuckIOS.xcodeproj -scheme RubberDuckIOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -sdk iphonesimulator -derivedDataPath /tmp/rubber-duck-ios-build CODE_SIGNING_ALLOWED=NO SDKROOT=iphonesimulator build` — Build the iOS app for simulator
+- `xcodebuild -project apps/ios/RubberDuckIOS.xcodeproj -scheme RubberDuckIOS -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' -sdk iphonesimulator -derivedDataPath /tmp/rubber-duck-ios-build CODE_SIGNING_ALLOWED=NO SDKROOT=iphonesimulator test` — Run iOS unit + UI tests
+- `./scripts/run-ios-e2e.sh` — Run the live iOS simulator typed-prompt E2E against an isolated local daemon (requires `OPENAI_API_KEY`)
 - `make unused` — Find unused Swift declarations (Periphery — Knip equivalent for Swift)
 - `xcodebuild -scheme Commandment -configuration Debug -destination 'generic/platform=macOS' build -derivedDataPath /tmp/rubber-duck-build && (pkill -x "Rubber Duck" || true) && rsync -a --delete "/tmp/rubber-duck-build/Build/Products/Debug/Rubber Duck.app/" "/Applications/Rubber Duck.app/" && open "/Applications/Rubber Duck.app"` — Build, replace installed app, relaunch (avoids stale bundle)
 
@@ -37,11 +40,12 @@ macOS menu bar voice coding agent — BYO OpenAI API key. Swift 5 / SwiftUI + Ke
 - `make e2e-swift` — Run Swift Realtime full-conversation E2E (requires `/tmp/rubber-duck-live-realtime-test`)
 - `make e2e-cli` — Run CLI daemon integration E2E (requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`)
 - `make e2e-smoke` — Run CLI shell smoke test (requires API key + built CLI)
+- `make ios-e2e` — Run the live iOS simulator E2E against a real daemon + Pi session (requires `OPENAI_API_KEY`)
 - `make e2e` — Run all E2E tests
 
 ## Setup
 
-- Requires Xcode 16+ and macOS 15.2+ SDK
+- Requires Xcode 26.2+ for the current iOS project settings and macOS 15.2+ SDK
 - SPM dependency: [KeyboardShortcuts](https://github.com/sindresorhus/KeyboardShortcuts) v2+
 - API key (OpenAI) stored in macOS Keychain, configured via Settings window
 

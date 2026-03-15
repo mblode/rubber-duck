@@ -7,46 +7,106 @@ struct VoiceTab: View {
     @Binding var isShowingPairingSheet: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Spacer(minLength: Theme.spacing16)
-            talkSection
-            Spacer(minLength: Theme.spacing16)
-            transcript
-        }
-        .safeAreaInset(edge: .bottom) {
-            ComposerBar(
-                text: $appModel.draftMessage,
-                isDisabled: appModel.activeSession == nil,
-                onSend: {
-                    Task { await appModel.sendDraft() }
+        NavigationStack {
+            ScrollViewReader { proxy in
+                List {
+                    Section("Current Setup") {
+                        sessionOverview
+                    }
+
+                    Section {
+                        talkSection
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, Theme.spacing8)
+                            .listRowSeparator(.hidden)
+                    } footer: {
+                        Text(talkSubtitle)
+                    }
+
+                    Section("Conversation") {
+                        if appModel.activeSession == nil {
+                            transcriptEmptyState(
+                                icon: "rectangle.stack",
+                                title: "Select a Session",
+                                subtitle: "Open the Sessions tab to choose the workspace you want to control from this iPhone."
+                            )
+                        } else if voiceModel.liveConversation.isEmpty {
+                            transcriptEmptyState(
+                                icon: "text.bubble",
+                                title: "No Transcript Yet",
+                                subtitle: "Hold the talk button or send a typed prompt to start."
+                            )
+                        } else {
+                            ForEach(voiceModel.liveConversation) { entry in
+                                MessageRow(entry: entry)
+                                    .id(entry.id)
+                            }
+                        }
+                    }
                 }
-            )
-        }
-        .task(id: contextKey) {
-            voiceModel.syncContext(
-                host: appModel.activeHost,
-                session: appModel.activeSession,
-                seedConversation: appModel.conversation
-            )
+                .listStyle(.insetGrouped)
+                .navigationTitle("Voice")
+                .navigationBarTitleDisplayMode(.large)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task { await appModel.refresh() }
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                    }
+                }
+                .refreshable {
+                    await appModel.refresh()
+                }
+                .safeAreaInset(edge: .bottom) {
+                    ComposerBar(
+                        text: $appModel.draftMessage,
+                        isDisabled: appModel.activeSession == nil,
+                        onSend: {
+                            Task { await appModel.sendDraft() }
+                        }
+                    )
+                }
+                .task(id: contextKey) {
+                    voiceModel.syncContext(
+                        host: appModel.activeHost,
+                        session: appModel.activeSession,
+                        seedConversation: appModel.conversation
+                    )
+                }
+                .onChange(of: voiceModel.liveConversation.count) { _, _ in
+                    guard let lastID = voiceModel.liveConversation.last?.id else { return }
+
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        proxy.scrollTo(lastID, anchor: .bottom)
+                    }
+                }
+            }
         }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: Theme.spacing8) {
-            HStack {
+    private var sessionOverview: some View {
+        VStack(alignment: .leading, spacing: Theme.spacing12) {
+            HStack(alignment: .top, spacing: Theme.spacing12) {
                 VStack(alignment: .leading, spacing: Theme.spacing4) {
-                    Text(appModel.selectedHostName)
-                        .font(.title3.bold())
+                    Label(appModel.selectedHostName, systemImage: "desktopcomputer")
+                        .font(.headline)
                         .foregroundStyle(Theme.label)
 
                     if let session = appModel.activeSession {
+                        Text(session.name)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Theme.label)
+
                         Text(session.workspacePath)
                             .font(.footnote)
                             .foregroundStyle(Theme.secondaryLabel)
-                            .lineLimit(1)
+                            .lineLimit(2)
+                    } else {
+                        Text("No workspace selected")
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.secondaryLabel)
                     }
                 }
 
@@ -55,31 +115,26 @@ struct VoiceTab: View {
                 StatusIndicator.connectionStatus(appModel.connectionState)
             }
 
-            HStack(spacing: Theme.spacing12) {
+            HStack(spacing: Theme.spacing8) {
                 StatusIndicator.voiceStatus(voiceModel.voiceState)
 
                 if let lastSyncedAt = appModel.lastSyncedAt {
-                    Text("Synced \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
-                        .font(.caption2)
+                    Text("Last synced \(lastSyncedAt.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption)
                         .foregroundStyle(Theme.tertiaryLabel)
                 }
 
                 Spacer()
 
-                Button {
-                    Task { await appModel.refresh() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.body.weight(.medium))
+                if !voiceModel.hasAPIKey {
+                    Label("API key required", systemImage: "key.horizontal.fill")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(Theme.secondaryLabel)
                 }
-                .tint(Theme.accent)
             }
         }
-        .padding(.horizontal, Theme.spacing16)
-        .padding(.top, Theme.spacing8)
+        .padding(.vertical, Theme.spacing4)
     }
-
-    // MARK: - Talk Section
 
     private var talkSection: some View {
         VStack(spacing: Theme.spacing12) {
@@ -93,58 +148,35 @@ struct VoiceTab: View {
                         isShowingPairingSheet = true
                         return
                     }
+
                     Task { await voiceModel.beginPressToTalk() }
                 },
                 onPressEnd: {
                     Task { await voiceModel.endPressToTalk() }
                 }
             )
-
-            Text(talkSubtitle)
-                .font(.footnote)
-                .foregroundStyle(Theme.secondaryLabel)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Theme.spacing32)
         }
     }
 
-    // MARK: - Transcript
-
-    private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    if voiceModel.liveConversation.isEmpty {
-                        EmptyStateView(
-                            icon: "text.bubble",
-                            title: "No Transcript Yet",
-                            subtitle: "Hold the talk button or send a typed prompt to start."
-                        )
-                    } else {
-                        ForEach(voiceModel.liveConversation) { entry in
-                            MessageRow(entry: entry)
-                                .id(entry.id)
-                                .padding(.horizontal, Theme.spacing16)
-                        }
-                    }
-                }
-            }
-            .onChange(of: voiceModel.liveConversation.count) { _, _ in
-                guard let lastID = voiceModel.liveConversation.last?.id else { return }
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(lastID, anchor: .bottom)
-                }
-            }
-        }
+    @ViewBuilder
+    private func transcriptEmptyState(icon: String, title: String, subtitle: String) -> some View {
+        EmptyStateView(
+            icon: icon,
+            title: title,
+            subtitle: subtitle
+        )
+        .frame(maxWidth: .infinity, minHeight: 240)
+        .listRowInsets(EdgeInsets())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .padding(.vertical, Theme.spacing8)
     }
 
-    // MARK: - Computed State
-
-    var talkEnabled: Bool {
-        appModel.activeSession != nil && voiceModel.hasAPIKey
+    private var talkEnabled: Bool {
+        appModel.activeSession != nil
     }
 
-    var talkSubtitle: String {
+    private var talkSubtitle: String {
         if appModel.activeSession == nil {
             return "Select a session to start."
         }

@@ -10,10 +10,15 @@ struct SettingsTab: View {
     @State private var saveError: String?
 
     var body: some View {
-        Form {
-            pairedMacsSection
-            voiceSection
-            aboutSection
+        NavigationStack {
+            Form {
+                statusSection
+                pairedMacsSection
+                voiceSection
+                aboutSection
+            }
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.large)
         }
         .task {
             if apiKeyDraft.isEmpty {
@@ -24,8 +29,29 @@ struct SettingsTab: View {
 
     // MARK: - Paired Macs
 
+    private var statusSection: some View {
+        Section("Status") {
+            LabeledContent("Remote") {
+                StatusIndicator.connectionStatus(appModel.connectionState)
+            }
+
+            LabeledContent("Voice") {
+                Label(
+                    voiceModel.hasAPIKey ? "Configured" : "Needs API Key",
+                    systemImage: voiceModel.hasAPIKey ? "checkmark.shield.fill" : "exclamationmark.triangle.fill"
+                )
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(voiceModel.hasAPIKey ? Theme.statusGreen : Theme.statusOrange)
+            }
+
+            if let activeHost = appModel.activeHost {
+                LabeledContent("Selected Mac", value: activeHost.displayName)
+            }
+        }
+    }
+
     private var pairedMacsSection: some View {
-        Section("Paired Macs") {
+        Section {
             ForEach(appModel.pairingSnapshot.hosts) { host in
                 Button {
                     Task { await appModel.selectHost(host) }
@@ -43,6 +69,10 @@ struct SettingsTab: View {
             } label: {
                 Label("Pair a Mac", systemImage: "plus.circle")
             }
+        } header: {
+            Text("Paired Macs")
+        } footer: {
+            Text("Choose which Mac receives session refreshes and tool calls from this iPhone.")
         }
     }
 
@@ -53,6 +83,8 @@ struct SettingsTab: View {
             SecureField("sk-...", text: $apiKeyDraft)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .textContentType(.password)
+                .privacySensitive()
                 .onChange(of: apiKeyDraft) { _, _ in
                     saveError = nil
                 }
@@ -67,7 +99,7 @@ struct SettingsTab: View {
 
                 Spacer()
 
-                Button("Save") {
+                Button("Save Key") {
                     do {
                         try voiceModel.saveAPIKey(apiKeyDraft)
                     } catch {

@@ -1,6 +1,11 @@
 SCHEME = Commandment
 CONFIGURATION = Release
 DERIVED_DATA = /tmp/rubber-duck-build
+IOS_PROJECT = apps/ios/RubberDuckIOS.xcodeproj
+IOS_SCHEME = RubberDuckIOS
+IOS_DERIVED_DATA = /tmp/rubber-duck-ios-build
+IOS_SIMULATOR = iPhone 17
+IOS_SIMULATOR_OS = 26.2
 ARCHIVE_PATH = $(DERIVED_DATA)/RubberDuck.xcarchive
 EXPORT_PATH = $(DERIVED_DATA)/export
 APP_NAME = RubberDuck
@@ -13,7 +18,7 @@ VERSION := $(shell git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || 
 CODESIGN_IDENTITY ?= Developer ID Application
 TEAM_ID ?= $(APPLE_TEAM_ID)
 
-.PHONY: build test cli-build cli-test cli-binary e2e-swift e2e-cli e2e-smoke e2e smoke-live archive export dmg-background dmg notarize clean unused
+.PHONY: build test ios-build ios-test ios-e2e cli-build cli-test cli-binary e2e-swift e2e-cli e2e-smoke e2e smoke-live archive export dmg-background dmg notarize clean unused
 
 CLI_BIN_DIR = cli-bin
 
@@ -35,6 +40,32 @@ test:
 		-derivedDataPath $(DERIVED_DATA) \
 		MARKETING_VERSION=$(VERSION) \
 		test
+
+ios-build:
+	xcodebuild -project $(IOS_PROJECT) \
+		-scheme $(IOS_SCHEME) \
+		-configuration Debug \
+		-destination 'platform=iOS Simulator,name=$(IOS_SIMULATOR),OS=$(IOS_SIMULATOR_OS)' \
+		-sdk iphonesimulator \
+		-derivedDataPath $(IOS_DERIVED_DATA) \
+		CODE_SIGNING_ALLOWED=NO \
+		SDKROOT=iphonesimulator \
+		build
+
+ios-test:
+	xcodebuild -project $(IOS_PROJECT) \
+		-scheme $(IOS_SCHEME) \
+		-configuration Debug \
+		-destination 'platform=iOS Simulator,name=$(IOS_SIMULATOR),OS=$(IOS_SIMULATOR_OS)' \
+		-sdk iphonesimulator \
+		-derivedDataPath $(IOS_DERIVED_DATA) \
+		-parallel-testing-enabled NO \
+		CODE_SIGNING_ALLOWED=NO \
+		SDKROOT=iphonesimulator \
+		test
+
+ios-e2e:
+	./scripts/run-ios-e2e.sh
 
 cli-build:
 	cd cli && npm run build
