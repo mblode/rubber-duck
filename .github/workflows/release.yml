@@ -79,7 +79,7 @@ jobs:
           xcodebuild -project apps/ios/RubberDuckIOS.xcodeproj \
             -scheme RubberDuckIOS \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.2' \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -sdk iphonesimulator \
             -derivedDataPath /tmp/rubber-duck-ios-build \
             -parallel-testing-enabled NO \

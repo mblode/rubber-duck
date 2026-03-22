@@ -15,7 +15,7 @@ const isBinaryDaemonMode =
   process.env.RUBBER_DUCK_DAEMON_MODE === "1"; // env-var mode: avoids pkg argv interception
 
 if (isBinaryDaemonMode) {
-  delete process.env.RUBBER_DUCK_DAEMON_MODE;
+  process.env.RUBBER_DUCK_DAEMON_MODE = undefined;
   if (process.argv[2] === "--daemon") {
     process.argv.splice(2, 1);
   }
