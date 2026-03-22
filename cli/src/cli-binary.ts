@@ -11,9 +11,11 @@ const isBinaryDaemonMode =
   invokedAs.endsWith("duck-daemon") ||
   invokedAs.endsWith("--daemon") || // pkg bootstrap: path.resolve("--daemon") → "/cwd/--daemon"
   process.argv[0]?.endsWith("duck-daemon") ||
-  process.argv[2] === "--daemon"; // npm dev mode: node spawns daemon.js directly
+  process.argv[2] === "--daemon" || // npm dev mode: node spawns daemon.js directly
+  process.env.RUBBER_DUCK_DAEMON_MODE === "1"; // env-var mode: avoids pkg argv interception
 
 if (isBinaryDaemonMode) {
+  delete process.env.RUBBER_DUCK_DAEMON_MODE;
   if (process.argv[2] === "--daemon") {
     process.argv.splice(2, 1);
   }

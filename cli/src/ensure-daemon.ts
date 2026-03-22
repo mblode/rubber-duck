@@ -70,12 +70,14 @@ export async function ensureDaemon(
   s?.start("Starting daemon...");
 
   // In a standalone pkg binary, process.execPath is the duck binary itself.
-  // Spawn it with --daemon to start the daemon process.
+  // Signal daemon mode via env var (RUBBER_DUCK_DAEMON_MODE) rather than a CLI
+  // flag because pkg's bootstrap intercepts argv[1] and tries to resolve it as
+  // a module path, crashing the child process before any JS code runs.
   // In normal npm installation, spawn node with the daemon.js path.
   const isPackaged =
     typeof (process as NodeJS.Process & { pkg?: unknown }).pkg !== "undefined";
   const daemonArgs = isPackaged
-    ? ["--daemon", "--verbose"]
+    ? []
     : (() => {
         const currentFile = fileURLToPath(import.meta.url);
         const distDir = dirname(currentFile);
@@ -86,7 +88,10 @@ export async function ensureDaemon(
   const child = spawn(process.execPath, daemonArgs, {
     detached: true,
     stdio: "ignore",
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      ...(isPackaged ? { RUBBER_DUCK_DAEMON_MODE: "1" } : {}),
+    },
   });
   child.unref();
 

@@ -3,7 +3,8 @@ const invokedAs = process.argv[1] ?? "";
 const isBinaryDaemonMode =
   invokedAs.endsWith("duck-daemon") ||
   process.argv[0]?.endsWith("duck-daemon") ||
-  process.argv[2] === "--daemon";
+  process.argv[2] === "--daemon" ||
+  process.env.RUBBER_DUCK_DAEMON_MODE === "1";
 
 if (isBinaryDaemonMode) {
   if (process.argv[2] === "--daemon") {
