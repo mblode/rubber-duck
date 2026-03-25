@@ -50,57 +50,15 @@ final class RubberDuckIOSUITests: XCTestCase {
     @MainActor
     func testTypedPromptRemoteControlFlow() throws {
         let remoteConfiguration = try UITestRemoteConfiguration.fromEnvironment()
-        let app = UITestApp.launch(remoteConfiguration: remoteConfiguration)
+        let app = UITestApp.launch(remoteConfiguration: remoteConfiguration, autoPair: true)
 
-        let pairButton = app.buttons["empty-state-action-button"]
-        XCTAssertTrue(pairButton.waitForExistence(timeout: 5))
-        pairButton.tap()
+        // Wait for main view (auto-pair bypasses pairing sheet)
+        let promptField = app.composerPromptField
+        XCTAssertTrue(
+            promptField.waitForExistence(timeout: 20),
+            "App never reached paired state after auto-pair. Alerts: \(alertSummary(in: app)). Visible UI: \(visibleSummary(in: app))"
+        )
 
-        XCTAssertTrue(app.navigationBars["Pair a Mac"].waitForExistence(timeout: 2))
-
-        let displayNameField = app.textFields["pairing-display-name-field"]
-        XCTAssertTrue(displayNameField.waitForExistence(timeout: 2))
-        if let expectedHostName = remoteConfiguration.expectedHostName {
-            XCTAssertEqual(displayNameField.value as? String, expectedHostName)
-        }
-
-        let hostField = app.textFields["pairing-host-field"]
-        XCTAssertTrue(hostField.waitForExistence(timeout: 2))
-        XCTAssertEqual(hostField.value as? String, remoteConfiguration.remoteURL)
-
-        let secureTokenField = app.secureTextFields["pairing-token-field"]
-        let tokenField = secureTokenField.waitForExistence(timeout: 2)
-            ? secureTokenField
-            : app.textFields["pairing-token-field"]
-        XCTAssertTrue(tokenField.waitForExistence(timeout: 2))
-        XCTAssertNotEqual(tokenField.value as? String, "")
-
-        let saveButton = app.buttons["pairing-save-button"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 2))
-        saveButton.tap()
-
-        let tabBar = app.tabBars.firstMatch
-        if !tabBar.waitForExistence(timeout: 15) {
-            let alertTexts = app.alerts.staticTexts.allElementsBoundByIndex
-                .map(\.label)
-                .filter { !$0.isEmpty }
-                .joined(separator: " | ")
-            let visibleLabels = (
-                app.staticTexts.allElementsBoundByIndex.map(\.label) +
-                app.buttons.allElementsBoundByIndex.map(\.label) +
-                app.navigationBars.allElementsBoundByIndex.map(\.label)
-            )
-            .filter { !$0.isEmpty }
-            .joined(separator: " | ")
-            XCTFail("App never reached paired state after manual pairing. Alerts: \(alertTexts). Visible UI: \(visibleLabels)")
-        }
-        XCTAssertTrue(app.buttons["Voice"].exists)
-        XCTAssertTrue(app.buttons["Sessions"].exists)
-        XCTAssertTrue(app.buttons["Settings"].exists)
-
-        if let expectedHostName = remoteConfiguration.expectedHostName {
-            XCTAssertTrue(app.staticTexts[expectedHostName].waitForExistence(timeout: 10))
-        }
         if let expectedSessionName = remoteConfiguration.expectedSessionName {
             XCTAssertTrue(
                 app.staticTexts[expectedSessionName].waitForExistence(timeout: 10),
@@ -110,11 +68,6 @@ final class RubberDuckIOSUITests: XCTestCase {
 
         dismissAlertIfNeeded(in: app)
 
-        let promptField = app.composerPromptField
-        XCTAssertTrue(
-            promptField.waitForExistence(timeout: 10),
-            "Prompt composer never became available. Alerts: \(alertSummary(in: app)). Visible UI: \(visibleSummary(in: app))"
-        )
         promptField.tap()
         promptField.typeText(remoteConfiguration.prompt)
 

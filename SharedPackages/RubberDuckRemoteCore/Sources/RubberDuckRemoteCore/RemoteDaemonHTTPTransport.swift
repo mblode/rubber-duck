@@ -83,10 +83,38 @@ public actor RemoteDaemonHTTPTransport: RemoteDaemonTransport {
         let piState: PiStateDTO?
     }
 
+    private struct PiModelDTO: Decodable {
+        let id: String?
+        let name: String?
+    }
+
+    private enum FlexibleModel: Decodable {
+        case string(String)
+        case object(PiModelDTO)
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let stringValue = try? container.decode(String.self) {
+                self = .string(stringValue)
+            } else if let objectValue = try? container.decode(PiModelDTO.self) {
+                self = .object(objectValue)
+            } else {
+                self = .string("unknown")
+            }
+        }
+
+        var displayName: String {
+            switch self {
+            case .string(let value): return value
+            case .object(let dto): return dto.id ?? dto.name ?? "unknown"
+            }
+        }
+    }
+
     private struct PiStateDTO: Decodable {
         let isStreaming: Bool?
         let messageCount: Int?
-        let model: String?
+        let model: FlexibleModel?
         let pendingMessageCount: Int?
         let sessionId: String?
         let sessionName: String?
@@ -1083,10 +1111,10 @@ public actor RemoteDaemonHTTPTransport: RemoteDaemonTransport {
             entries.append(
                 RemoteConversationEntry(
                     role: .status,
-                    text: "Pi is running \(piState.model ?? "the default model") with \(piState.messageCount ?? 0) messages and \(piState.pendingMessageCount ?? 0) pending.",
+                    text: "Pi is running \(piState.model?.displayName ?? "the default model") with \(piState.messageCount ?? 0) messages and \(piState.pendingMessageCount ?? 0) pending.",
                     timestamp: .now.addingTimeInterval(0.1),
                     metadata: [
-                        "model": piState.model ?? "unknown",
+                        "model": piState.model?.displayName ?? "unknown",
                         "thinking": piState.thinkingLevel ?? "unknown"
                     ]
                 )

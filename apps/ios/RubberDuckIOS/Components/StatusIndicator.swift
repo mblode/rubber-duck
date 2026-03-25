@@ -106,6 +106,17 @@ extension StatusIndicator {
     }
 }
 
+struct StatusDot: View {
+    let state: RemoteConnectionState
+
+    var body: some View {
+        Circle()
+            .fill(StatusIndicator.statusColor(for: state))
+            .frame(width: 10, height: 10)
+            .accessibilityLabel(StatusIndicator.statusLabel(for: state))
+    }
+}
+
 #Preview {
     VStack(spacing: 12) {
         StatusIndicator.connectionStatus(.connected)
@@ -113,6 +124,8 @@ extension StatusIndicator {
         StatusIndicator.connectionStatus(.failed)
         StatusIndicator.voiceStatus(.listening)
         StatusIndicator.voiceStatus(.thinking)
+        StatusDot(state: .connected)
+        StatusDot(state: .failed)
     }
     .padding()
 }

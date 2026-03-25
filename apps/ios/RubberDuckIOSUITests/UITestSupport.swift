@@ -166,43 +166,11 @@ enum UITestApp {
 
 extension XCUIApplication {
     var composerPromptField: XCUIElement {
-        let textField = textFields["Send a prompt..."]
-        if textField.exists {
-            return textField
-        }
-
-        let textView = textViews["Send a prompt..."]
-        if textView.exists {
-            return textView
-        }
-
-        let anyTextField = textFields.firstMatch
-        if anyTextField.exists {
-            return anyTextField
-        }
-
-        return textViews.firstMatch
+        let tf = textFields["composer-text-field"]
+        return tf.exists ? tf : textViews["composer-text-field"]
     }
 
     var composerSendButton: XCUIElement {
-        let explicitCandidates = [
-            buttons["composer-send-button"],
-            buttons["voice-send-button"],
-            buttons["Send Prompt"],
-            buttons["Send"],
-            buttons["paperplane.fill"],
-            buttons["arrow.up.circle.fill"],
-        ]
-
-        if let match = explicitCandidates.first(where: \.exists) {
-            return match
-        }
-
-        let hittableButtons = buttons.allElementsBoundByIndex.filter(\.isHittable)
-        if let fallback = hittableButtons.last {
-            return fallback
-        }
-
-        return buttons.firstMatch
+        buttons["composer-send-button"]
     }
 }

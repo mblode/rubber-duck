@@ -13,20 +13,7 @@ struct ContentView: View {
             if !appModel.isBootstrapped {
                 bootingView
             } else if appModel.hasPairedHosts {
-                TabView {
-                    Tab("Voice", systemImage: "mic.fill") {
-                        VoiceTab(isShowingPairingSheet: $isShowingPairingSheet)
-                    }
-
-                    Tab("Sessions", systemImage: "folder") {
-                        SessionsTab()
-                    }
-
-                    Tab("Settings", systemImage: "gearshape") {
-                        SettingsTab(isShowingPairingSheet: $isShowingPairingSheet)
-                    }
-                }
-                .tint(Theme.accent)
+                MainView(isShowingPairingSheet: $isShowingPairingSheet)
             } else {
                 NavigationStack {
                     EmptyStateView(
