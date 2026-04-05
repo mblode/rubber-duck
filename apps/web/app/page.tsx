@@ -1,5 +1,7 @@
 import Image from "next/image";
 
+import { SiteFooter } from "@/components/site-footer";
+
 interface GitHubRelease {
   tag_name: string;
   assets: Array<{
@@ -40,8 +42,8 @@ export default async function HomePage() {
   const sizeMb = release?.sizeMb ?? null;
 
   return (
-    <main className="relative flex items-center min-h-dvh bg-[#1c1c1e] overflow-hidden">
-      <div className="flex flex-col items-start text-left pl-[clamp(40px,12vw,180px)] pr-10">
+    <main className="flex flex-col min-h-dvh bg-[#1c1c1e] overflow-hidden">
+      <div className="flex flex-1 flex-col items-start justify-center px-[clamp(24px,8vw,180px)] pt-16 md:mx-auto md:pt-0">
         <div className="w-[84px] h-[84px] rounded-[19px] overflow-hidden shadow-2xl">
           <Image
             src="/app-icon.png"
@@ -52,7 +54,7 @@ export default async function HomePage() {
           />
         </div>
 
-        <h1 className="text-[38px] font-bold tracking-[-0.035em] leading-none text-[#f5f5f7] mt-6">
+        <h1 className="text-[clamp(28px,5vw,38px)] font-bold tracking-[-0.035em] leading-none text-[#f5f5f7] mt-6">
           Rubber Duck
         </h1>
 
@@ -88,19 +90,11 @@ export default async function HomePage() {
         </div>
 
         <span className="text-[12px] text-[#636366] mt-3">
-          {version} · macOS 15.2+ · OpenAI API key required
+          OpenAI API key required
         </span>
       </div>
 
-      <p className="absolute bottom-7 left-[clamp(40px,12vw,180px)] text-[12px] text-[#48484a]">
-        © {new Date().getFullYear()} Matthew Blode ·{" "}
-        <a
-          href="https://github.com/mblode/rubber-duck"
-          className="hover:text-[#636366] transition-colors"
-        >
-          GitHub
-        </a>
-      </p>
+      <SiteFooter version={version} />
     </main>
   );
 }
