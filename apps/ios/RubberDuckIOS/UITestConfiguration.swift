@@ -191,6 +191,7 @@ struct AppRuntimeConfiguration: Sendable {
         )
     }
 
+    @MainActor
     func makeVoiceModel() -> RemoteIOSVoiceSessionModel {
         let credentialStore = makeRemoteCredentialStore()
         return RemoteIOSVoiceSessionModel(
