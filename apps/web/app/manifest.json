@@ -1,6 +1,8 @@
 {
-  "name": "MyWebSite",
-  "short_name": "MySite",
+  "name": "Rubber Duck",
+  "short_name": "Rubber Duck",
+  "description": "A macOS menu bar voice coding agent. Talk through your code with AI.",
+  "start_url": "/",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -15,7 +17,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#1c1c1e",
+  "background_color": "#1c1c1e",
   "display": "standalone"
 }
