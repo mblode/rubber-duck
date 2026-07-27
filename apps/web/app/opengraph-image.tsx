@@ -1,39 +1,39 @@
 import { ImageResponse } from "next/og";
 
 export const alt = "Rubber Duck — Talk through your code with AI";
-export const size = { width: 1200, height: 630 };
+export const size = { height: 630, width: 1200 };
 export const contentType = "image/png";
 
 export default function OpengraphImage() {
   return new ImageResponse(
     <div
       style={{
-        width: "100%",
-        height: "100%",
+        backgroundColor: "#1c1c1e",
         display: "flex",
         flexDirection: "column",
+        height: "100%",
         justifyContent: "center",
         padding: "100px",
-        backgroundColor: "#1c1c1e",
+        width: "100%",
       }}
     >
       <div
         style={{
+          color: "#f5f5f7",
           fontSize: 88,
           fontWeight: 700,
-          color: "#f5f5f7",
           letterSpacing: "-0.04em",
         }}
       >
         Rubber Duck
       </div>
-      <div style={{ fontSize: 44, color: "#c5c5ca", marginTop: 16 }}>
+      <div style={{ color: "#c5c5ca", fontSize: 44, marginTop: 16 }}>
         Talk through your code with AI.
       </div>
-      <div style={{ fontSize: 30, color: "#98989d", marginTop: 28 }}>
+      <div style={{ color: "#98989d", fontSize: 30, marginTop: 28 }}>
         A macOS menu bar voice coding agent.
       </div>
     </div>,
-    { ...size },
+    { ...size }
   );
 }
