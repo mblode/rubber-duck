@@ -17,7 +17,9 @@ export const SiteFooter = ({ version }: { version: string }) => (
           className="rounded-full"
           height={20}
           loading="lazy"
-          src="/avatar-sm.png"
+          // next/image does not apply basePath to the optimiser's `url` param,
+          // so the prefix has to stay in the src.
+          src="/rubber-duck/avatar-sm.png"
           width={20}
         />
         Matthew Blode
