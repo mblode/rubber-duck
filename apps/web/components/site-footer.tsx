@@ -1,6 +1,6 @@
 import Image from "next/image";
-
 import { siteConfig } from "@/lib/config";
+import avatarSm from "@/public/avatar-sm.png";
 
 export const SiteFooter = ({ version }: { version: string }) => (
   <footer className="flex flex-col items-center justify-center gap-2 py-6 text-muted-foreground text-sm">
@@ -17,9 +17,7 @@ export const SiteFooter = ({ version }: { version: string }) => (
           className="rounded-full"
           height={20}
           loading="lazy"
-          // next/image does not apply basePath to the optimiser's `url` param,
-          // so the prefix has to stay in the src.
-          src="/rubber-duck/avatar-sm.png"
+          src={avatarSm}
           width={20}
         />
         Matthew Blode
