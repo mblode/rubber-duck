@@ -46,7 +46,7 @@ export default async function HomePage() {
       <div className="flex flex-1 flex-col items-start justify-center px-[clamp(24px,8vw,180px)] pt-16 md:mx-auto md:pt-0">
         <div className="w-[84px] h-[84px] rounded-[19px] overflow-hidden shadow-2xl">
           <Image
-            src="/app-icon.png"
+            src="/rubber-duck/app-icon.png"
             alt="Rubber Duck"
             width={84}
             height={84}

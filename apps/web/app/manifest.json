@@ -2,16 +2,17 @@
   "name": "Rubber Duck",
   "short_name": "Rubber Duck",
   "description": "A macOS menu bar voice coding agent. Talk through your code with AI.",
-  "start_url": "/",
+  "start_url": "/rubber-duck",
+  "scope": "/rubber-duck/",
   "icons": [
     {
-      "src": "/web-app-manifest-192x192.png",
+      "src": "/rubber-duck/web-app-manifest-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/web-app-manifest-512x512.png",
+      "src": "/rubber-duck/web-app-manifest-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
