@@ -1,46 +1,46 @@
+import { Agentation } from "agentation";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Agentation } from "agentation";
 import { JsonLd } from "@/components/json-ld";
 import { siteConfig } from "@/lib/config";
 import "./globals.css";
 
 const glide = localFont({
+  display: "swap",
   src: [
     { path: "../public/glide-variable.woff2", style: "normal" },
     { path: "../public/glide-variable-italic.woff2", style: "italic" },
   ],
   variable: "--font-glide",
   weight: "400 900",
-  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: siteConfig.title,
-  description: siteConfig.description,
-  metadataBase: new URL(siteConfig.url),
   alternates: {
     canonical: siteConfig.url,
   },
   appleWebApp: {
     title: siteConfig.name,
   },
+  description: siteConfig.description,
+  metadataBase: new URL(siteConfig.url),
   openGraph: {
-    type: "website",
+    description: siteConfig.description,
+    locale: "en_US",
     siteName: siteConfig.name,
     title: siteConfig.title,
-    description: siteConfig.description,
+    type: "website",
     url: siteConfig.url,
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: siteConfig.title,
-    description: siteConfig.description,
   },
   robots: {
-    index: true,
     follow: true,
+    index: true,
+  },
+  title: siteConfig.title,
+  twitter: {
+    card: "summary_large_image",
+    description: siteConfig.description,
+    title: siteConfig.title,
   },
   verification: {
     google: "mFwyBIbXTaKK4uF_NA0MzVWFyY40hPgBjFObg3rje04",
@@ -48,8 +48,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1c1e",
   colorScheme: "dark",
+  themeColor: "#1c1c1e",
 };
 
 const personId = `${siteConfig.url}/#person`;
@@ -60,36 +60,36 @@ const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
     {
-      "@type": "Person",
       "@id": personId,
-      name: siteConfig.author,
-      url: siteConfig.links.author,
+      "@type": "Person",
       image: `${siteConfig.url}/matthew-blode-profile.jpg`,
+      name: siteConfig.author,
       sameAs: [siteConfig.links.author, "https://github.com/mblode"],
+      url: siteConfig.links.author,
     },
     {
-      "@type": "WebSite",
       "@id": websiteId,
+      "@type": "WebSite",
       name: siteConfig.name,
-      url: siteConfig.url,
       publisher: { "@id": personId },
+      url: siteConfig.url,
     },
     {
-      "@type": "SoftwareApplication",
       "@id": appId,
-      name: siteConfig.name,
-      description: siteConfig.description,
-      url: siteConfig.url,
+      "@type": "SoftwareApplication",
       applicationCategory: "DeveloperApplication",
-      operatingSystem: "macOS",
-      image: `${siteConfig.url}/web-app-manifest-512x512.png`,
       author: { "@id": personId },
+      description: siteConfig.description,
+      image: `${siteConfig.url}/web-app-manifest-512x512.png`,
       isPartOf: { "@id": websiteId },
+      name: siteConfig.name,
       offers: {
         "@type": "Offer",
         price: "0",
         priceCurrency: "USD",
       },
+      operatingSystem: "macOS",
+      url: siteConfig.url,
     },
   ],
 };
@@ -100,7 +100,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html className="dark" lang="en">
       <head>
         <link href="https://us.i.posthog.com" rel="preconnect" />
         <link href="https://us-assets.i.posthog.com" rel="dns-prefetch" />

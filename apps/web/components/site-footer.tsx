@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import { siteConfig } from "@/lib/config";
 
 export const SiteFooter = ({ version }: { version: string }) => (
@@ -10,20 +12,19 @@ export const SiteFooter = ({ version }: { version: string }) => (
         rel="author noopener"
         target="_blank"
       >
-        <img
+        <Image
           alt="Avatar of Matthew Blode"
           className="rounded-full"
           height={20}
           loading="lazy"
-          src="/rubber-duck/avatar-sm.png"
+          src="/avatar-sm.png"
           width={20}
         />
         Matthew Blode
       </a>
     </div>
     <div className="flex items-center gap-2 text-muted-foreground/30">
-      <span className="text-muted-foreground">{version}</span>{" "}
-      &bull;
+      <span className="text-muted-foreground">{version}</span> &bull;
       <a
         className="text-muted-foreground transition-colors hover:text-foreground"
         href={siteConfig.links.github}

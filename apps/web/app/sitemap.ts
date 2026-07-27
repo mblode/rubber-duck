@@ -4,10 +4,10 @@ import { siteConfig } from "@/lib/config";
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: siteConfig.url,
-      lastModified: new Date(),
       changeFrequency: "weekly",
+      lastModified: new Date(),
       priority: 1,
+      url: siteConfig.url,
     },
   ];
 }
