@@ -97,6 +97,44 @@ export default async function HomePage() {
         <span className="mt-3 text-[#636366] text-[12px]">
           OpenAI API key required
         </span>
+
+        {/*
+          45 words before this, none of which explained the thing that makes it
+          different from talking to a chat window: it can open the files you are
+          asking about, and it does that on your machine.
+        */}
+        <section className="mt-16 max-w-[62ch] space-y-4 font-light text-[#98989d] text-[14px] leading-[1.7]">
+          <h2 className="font-medium text-[#c5c5ca] text-[15px]">
+            How it works
+          </h2>
+
+          <p>
+            Rubber Duck is the debugging technique with the duck swapped for
+            something that answers back. It lives in the macOS menu bar. Press
+            Option and D, ask the question out loud, and it replies out loud.
+            Half the value of explaining a problem to a duck is the explaining,
+            and this one can ask you what you meant.
+          </p>
+
+          <p>
+            What separates it from talking at a chat window is that it can see
+            the code you are describing. Point the duck command at a directory
+            and the menu bar app switches to that workspace straight away. From
+            there it has real tools: read a file, grep the tree, find files by
+            name, run a command, make an edit. Those run locally through a small
+            daemon over a Unix socket, so the model asks for a file and your own
+            machine is what opens it.
+          </p>
+
+          <p>
+            Audio goes to the OpenAI Realtime API as 24 kHz mono, on your own
+            API key, kept in the macOS Keychain. You pay for the minutes you
+            talk and there is no subscription. If the daemon happens not to be
+            running the app still works, you just get the conversation without
+            the tools, and the command line half installs itself the first time
+            you launch it.
+          </p>
+        </section>
       </div>
 
       <SiteFooter version={version} />
