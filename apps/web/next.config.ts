@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   assetPrefix: "/rubber-duck",
   basePath: "/rubber-duck",
+  experimental: {
+    turbopackRustReactCompiler: true,
+  },
   reactCompiler: true,
   redirects() {
     return Promise.resolve([
