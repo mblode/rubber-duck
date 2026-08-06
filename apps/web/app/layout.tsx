@@ -2,7 +2,8 @@ import { Agentation } from "agentation";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { JsonLd } from "@/components/json-ld";
-import { siteConfig } from "@/lib/config";
+import { appId, faqId, personId, siteConfig, websiteId } from "@/lib/config";
+import { faqSchema } from "@/lib/faq";
 import "./globals.css";
 
 const glide = localFont({
@@ -52,10 +53,6 @@ export const viewport: Viewport = {
   themeColor: "#1c1c1e",
 };
 
-const personId = `${siteConfig.url}/#person`;
-const websiteId = `${siteConfig.url}/#website`;
-const appId = `${siteConfig.url}/#software`;
-
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
@@ -88,9 +85,10 @@ const structuredData = {
         price: "0",
         priceCurrency: "USD",
       },
-      operatingSystem: "macOS",
+      operatingSystem: "macOS 15.2",
       url: siteConfig.url,
     },
+    faqSchema(faqId),
   ],
 };
 
