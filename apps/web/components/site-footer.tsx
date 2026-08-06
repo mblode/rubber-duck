@@ -3,11 +3,11 @@ import { siteConfig } from "@/lib/config";
 import avatarSm from "@/public/avatar-sm.png";
 
 export const SiteFooter = ({ version }: { version: string }) => (
-  <footer className="flex flex-col items-center justify-center gap-2 py-6 text-muted-foreground text-sm">
+  <footer className="flex flex-col items-center justify-center gap-2 pt-16 pb-8 text-ink-subtle text-sm">
     <div className="flex items-center gap-1">
       Crafted by
       <a
-        className="flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-1.5 transition-colors hover:text-foreground"
+        className="flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-1.5 hover:text-ink"
         href={siteConfig.links.author}
         rel="author noopener"
         target="_blank"
@@ -23,10 +23,14 @@ export const SiteFooter = ({ version }: { version: string }) => (
         Matthew Blode
       </a>
     </div>
-    <div className="flex items-center gap-2 text-muted-foreground/30">
-      <span className="text-muted-foreground">{version}</span> &bull;
+    <div className="flex items-center gap-2 text-ink-faint">
+      {version ? (
+        <>
+          <span className="text-ink-subtle">{version}</span> &bull;
+        </>
+      ) : null}
       <a
-        className="text-muted-foreground transition-colors hover:text-foreground"
+        className="text-ink-subtle hover:text-ink"
         href={siteConfig.links.github}
         rel="noopener noreferrer"
         target="_blank"
