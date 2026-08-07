@@ -9,8 +9,7 @@ export const SiteFooter = ({ version }: { version: string }) => (
       <a
         className="flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-1.5 hover:text-ink focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
         href={siteConfig.links.author}
-        rel="author noopener"
-        target="_blank"
+        rel="author"
       >
         <Image
           alt="Avatar of Matthew Blode"
@@ -29,6 +28,16 @@ export const SiteFooter = ({ version }: { version: string }) => (
           <span className="text-ink-subtle">{version}</span> &bull;
         </>
       ) : null}
+      {/* The edge back to the hub: same origin behind a rewrite, so same tab
+          and no rel. See
+          blode-co/apps/web/.claude/knowledge/zone-conventions.md. */}
+      <a
+        className="text-ink-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+        href="https://blode.co/projects"
+      >
+        All projects
+      </a>{" "}
+      &bull;
       <a
         className="text-ink-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
         href={siteConfig.links.github}
