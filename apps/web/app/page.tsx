@@ -2,6 +2,7 @@ import Image from "next/image";
 
 import { FaqDisclosure } from "@/components/faq-disclosure";
 import { SiteFooter } from "@/components/site-footer";
+import { ZoneBreadcrumb } from "@/components/zone-breadcrumb";
 
 // Shape of an unvalidated GitHub API response, so every field is optional. The
 // fetch below guards each access; declaring them required would make those
@@ -56,10 +57,17 @@ export default async function HomePage() {
 
   return (
     <main className="isolate flex min-h-dvh flex-col bg-canvas">
+      {/* Root page only, and matched word for word by the BreadcrumbList in
+          lib/config.ts. Outside the vertically centred block so it stays at the
+          top of the page rather than drifting with the hero. */}
+      <div className="mx-auto w-full max-w-[62ch] px-6 pt-8">
+        <ZoneBreadcrumb product="Rubber Duck" />
+      </div>
+
       {/* One block, centred in the viewport, everything inside left-aligned.
           Margins live on these children rather than a gap, because the spacing
           between them is deliberately uneven. */}
-      <div className="flex flex-1 flex-col justify-center px-6 py-16">
+      <div className="flex flex-1 flex-col justify-center px-6 pt-10 pb-16">
         <div className="mx-auto w-full max-w-[62ch]">
           <Image
             alt="Rubber Duck"

@@ -57,6 +57,14 @@ export const faq: FaqEntry[] = [
     id: "install",
     question: "How do I install it?",
   },
+  // The identity question. Every zone carries one, so the answer to "who makes
+  // this" is on the page and in the graph rather than only in a footer credit.
+  {
+    answer:
+      "Rubber Duck is built by Matthew Blode, a product leader and engineer in Melbourne.",
+    id: "who",
+    question: "Who makes Rubber Duck?",
+  },
 ];
 
 const anchor = (entry: FaqEntry) => `${siteConfig.url}#${entry.id}`;
