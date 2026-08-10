@@ -103,11 +103,15 @@ const structuredData = {
       author: { "@id": personId },
       description: siteConfig.description,
       image: `${siteConfig.url}/web-app-manifest-512x512.png`,
+      isAccessibleForFree: true,
       isPartOf: { "@id": websiteId },
       name: siteConfig.name,
       offers: {
         "@type": "Offer",
-        price: "0",
+        availability: "https://schema.org/InStock",
+        // Numeric 0 matches Google's SoftwareApplication example. String "0"
+        // is schema.org-legal but Semrush Site Audit flags it as invalid markup.
+        price: 0,
         priceCurrency: "USD",
       },
       operatingSystem: "macOS 15.2",
