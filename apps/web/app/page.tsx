@@ -3,6 +3,7 @@ import Image from "next/image";
 import { FaqDisclosure } from "@/components/faq-disclosure";
 import { SiteFooter } from "@/components/site-footer";
 import { ZoneBreadcrumb } from "@/components/zone-breadcrumb";
+import { siteConfig } from "@/lib/config";
 
 // Shape of an unvalidated GitHub API response, so every field is optional. The
 // fetch below guards each access; declaring them required would make those
@@ -59,9 +60,52 @@ export default async function HomePage() {
     <main className="isolate flex min-h-dvh flex-col bg-canvas">
       {/* Root page only, and matched word for word by the BreadcrumbList in
           lib/config.ts. Outside the vertically centred block so it stays at the
-          top of the page rather than drifting with the hero. */}
-      <div className="mx-auto w-full max-w-[62ch] px-6 pt-8">
-        <ZoneBreadcrumb product="Rubber Duck" />
+          top of the page rather than drifting with the hero.
+
+          The padding sits on the outer element and the measure on the inner
+          one, exactly as the hero block below does it. With `px-6` on the same
+          element as `max-w-[62ch]` the padding eats into the measure, so this
+          row started 24px right of the app icon it is supposed to line up
+          with. */}
+      <div className="px-6 pt-8">
+        <div className="mx-auto flex w-full max-w-[62ch] items-center justify-between gap-4">
+          <ZoneBreadcrumb product="Rubber Duck" />
+          {/*
+            The repo link every visitor who scrolls past the download looks for,
+            hoisted out of the footer. Icon only, so the accessible name comes
+            from aria-label; the icon itself is decorative.
+
+            Negative margin pulls the button's own padding back so the glyph,
+            not the hit area, aligns with the measure. The empty span grows the
+            target to 48px on touch, where 36px is under the minimum.
+          */}
+          <a
+            aria-label="View on GitHub"
+            className="relative -mr-2 inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-subtle transition-colors hover:bg-white/8 hover:text-ink focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+            href={siteConfig.links.github}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            {/*
+              Inlined for the same reason as the Apple mark below: one glyph,
+              and the only icon package installed here draws GitHub as a thin
+              outline that reads as a generic cat next to a solid brand mark.
+            */}
+            <svg
+              aria-hidden="true"
+              fill="currentColor"
+              height="18"
+              viewBox="0 0 24 24"
+              width="18"
+            >
+              <path d="M12.0459 1.0001a10.9969 10.9969 0 0 0-3.4824 21.444c.5498.0917.7331-.2749.7331-.5498v-1.8328c-3.0241.6414-3.6656-1.4663-3.6656-1.4663-.5499-1.283-1.283-1.6495-1.283-1.6495-.9164-.6415.0917-.6415.0917-.6415 1.0996 0 1.7411 1.0997 1.7411 1.0997.9164 1.6495 2.566 1.1913 3.2075.9164.0916-.7332.3665-1.1914.7331-1.4663-2.4743-.2749-5.0403-1.1913-5.0403-5.4068 0-1.1913.4582-2.1994 1.0997-2.9325-.1832-.275-.4582-1.283.0917-2.6576 0 0 .9164-.275 3.0241 1.0997a10.54 10.54 0 0 1 5.4985 0c2.1077-1.3746 3.0241-1.0997 3.0241-1.0997.5499 1.3746.275 2.3827.0917 2.6576.7331.7331 1.0997 1.7412 1.0997 2.9325 0 4.2155-2.566 5.1319-5.0403 5.4068.3666.3666.7332 1.0081.7332 2.0161v3.0242c0 .2749.1832.6415.7331.5498a10.997 10.997 0 0 0 7.4284-12.1646 10.9966 10.9966 0 0 0-10.8191-9.2794" />
+            </svg>
+            <span
+              aria-hidden="true"
+              className="-translate-1/2 absolute top-1/2 left-1/2 pointer-fine:hidden size-[max(100%,3rem)]"
+            />
+          </a>
+        </div>
       </div>
 
       {/* One block, centred in the viewport, everything inside left-aligned.
