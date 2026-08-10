@@ -102,7 +102,10 @@ const structuredData = {
       applicationCategory: "DeveloperApplication",
       author: { "@id": personId },
       description: siteConfig.description,
-      image: `${siteConfig.url}/web-app-manifest-512x512.png`,
+      // The generated OG card, not the 512px manifest icon. Google asks for at
+      // least 1200px on the wide side, and the icon fell well under it. Same
+      // source commandment, convene and moon already point at.
+      image: `${siteConfig.url}/opengraph-image`,
       isAccessibleForFree: true,
       isPartOf: { "@id": websiteId },
       name: siteConfig.name,
