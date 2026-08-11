@@ -69,11 +69,11 @@ describe("the seven tools", () => {
    * `writeFile` and `editFile` in the dispatcher, both of which return
    * "disabled in safe mode".
    */
-  it("marks write_file and edit_file as refused in safe mode", () => {
-    const refused = TOOLS.rows
-      .filter((tool) => tool.safe === "Refused")
+  it("marks write_file and edit_file as blocked in safe mode", () => {
+    const blocked = TOOLS.rows
+      .filter((tool) => tool.safe === "Blocked")
       .map((tool) => tool.name);
-    expect(refused).toEqual(["write_file", "edit_file"]);
+    expect(blocked).toEqual(["write_file", "edit_file"]);
     expect(source).toContain("write_file is disabled in safe mode");
     expect(source).toContain("edit_file is disabled in safe mode");
   });

@@ -16,7 +16,7 @@ export const SiteFooter = ({ version }: { version: string }) => (
       `ink` scale, so `text-muted-foreground` would read wrong here.
     */}
     <div className="flex max-w-full flex-wrap items-center justify-center gap-1">
-      Crafted by
+      By
       <a
         className="flex items-center gap-2 rounded-full py-1.5 pr-2.5 pl-1.5 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
         href={siteConfig.links.author}

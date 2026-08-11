@@ -1,7 +1,7 @@
 {
   "name": "Rubber Duck",
   "short_name": "Rubber Duck",
-  "description": "A macOS menu bar voice coding agent. Talk through your code with AI.",
+  "description": "Ask about a repo out loud. Rubber Duck reads the code, answers back, and makes edits on your Mac.",
   "start_url": "/rubber-duck",
   "scope": "/rubber-duck/",
   "icons": [

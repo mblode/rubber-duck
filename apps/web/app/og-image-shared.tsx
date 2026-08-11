@@ -36,8 +36,7 @@ import { ImageResponse } from "next/og";
 export const OG_SIZE = { height: 630, width: 1200 } as const;
 export const OG_CONTENT_TYPE = "image/png";
 
-const BRAND_GRADIENT =
-  "linear-gradient(150deg, rgb(0, 144, 245) 0%, rgb(230, 214, 221) 52%, rgb(234, 176, 69) 100%)";
+const BRAND_BACKGROUND = "#ffca3a";
 // Kept in sync by hand with --primary, oklch(0.52 0.23 268). Cards render light
 // in both schemes: a social card is an image, and the feeds that embed it have
 // no idea what the reader's OS is set to.
@@ -101,7 +100,7 @@ export const renderZoneOgImage = ({
   const content = (
     <div
       style={{
-        background: BRAND_GRADIENT,
+        background: BRAND_BACKGROUND,
         display: "flex",
         height: "100%",
         padding: 24,

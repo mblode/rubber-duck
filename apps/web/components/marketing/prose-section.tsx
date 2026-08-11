@@ -1,16 +1,5 @@
-import { Reveal } from "@/components/ui/reveal";
-import { Container, Section, SectionHeading } from "@/components/ui/section";
+import { Container, Section } from "@/components/ui/section";
 
-/**
- * A question and its answer, with nothing around it.
- *
- * The two questions that stop an install — whether it can interrupt itself when
- * you talk over it, and where your code is actually read — are each one honest
- * paragraph. Both were briefly diagrams, and both versions said less than the
- * sentence does: a three-node flow chart of "mic → app → OpenAI" is a picture
- * of a sentence, and a reader deciding whether to trust this with a repo is
- * reading, not scanning. So there is no graphic here on purpose.
- */
 export const ProseSection = ({
   body,
   heading,
@@ -20,14 +9,19 @@ export const ProseSection = ({
   heading: string;
   id?: string;
 }) => (
-  <Section id={id}>
+  <Section
+    className="border-white/8 border-t py-16 first:border-t-0 sm:py-20"
+    id={id}
+  >
     <Container>
-      <Reveal>
-        <SectionHeading>{heading}</SectionHeading>
-        <p className="mt-4 max-w-[65ch] text-pretty text-ink-muted text-lg leading-relaxed">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,3fr)] lg:gap-20">
+        <h2 className="max-w-[20ch] text-balance font-medium text-3xl text-ink tracking-[-0.035em] sm:text-4xl">
+          {heading}
+        </h2>
+        <p className="max-w-[58ch] text-pretty text-ink-muted text-lg lg:pt-1">
           {body}
         </p>
-      </Reveal>
+      </div>
     </Container>
   </Section>
 );

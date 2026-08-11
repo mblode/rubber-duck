@@ -45,12 +45,8 @@ describe("the answer block", () => {
 
   it("is present in the server-rendered markup", () => {
     const html = renderToStaticMarkup(AnswerBlock());
-    // Apostrophes are entity-encoded on the way out, so compare on a stretch
-    // that has none rather than escaping the whole paragraph.
-    expect(html).toContain("Rubber Duck is a free macOS menu bar app");
-    expect(html).toContain(
-      "makes edits on your machine through a local daemon, on your own OpenAI key."
-    );
+    expect(html).toContain("Point it at a repo, press Option+D, and talk.");
+    expect(html).toContain("There is no Rubber Duck account or subscription.");
   });
 });
 

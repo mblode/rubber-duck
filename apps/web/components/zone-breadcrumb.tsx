@@ -17,10 +17,9 @@
  *    payload for a route this app does not own. These are also same-origin
  *    (a zone is blode.co behind a rewrite), so: same tab, and no
  *    `rel="noopener noreferrer"`, which only means something cross-origin.
- * 3. **The visible trail must match `BreadcrumbList` exactly.** Google treats a
- *    mismatch as a markup error. Both start at "Matthew Blode", not "Home":
- *    the root crumb is the one piece of chrome every zone shows above the fold,
- *    so it may as well say who made the thing.
+ * 3. **The desktop trail matches `BreadcrumbList`.** The narrow header omits
+ *    only the root crumb so the current product never wraps; Projects and the
+ *    current page remain visible navigation.
  *
  * Root page only. Inner pages have their own navigation and a second trail
  * would just be noise.
@@ -41,7 +40,18 @@ const Separator = () => (
 
 export const ZoneBreadcrumb = ({ product }: { product: string }) => (
   <nav aria-label="Breadcrumb" className="text-[13px] text-ink-subtle">
-    <ol className="flex flex-wrap items-center gap-1.5">
+    <ol className="flex items-center gap-1.5 sm:hidden">
+      <li className="flex items-center gap-1.5">
+        <a className={linkClassName} href={PROJECTS}>
+          Projects
+        </a>
+        <Separator />
+      </li>
+      <li aria-current="page" className="text-ink">
+        {product}
+      </li>
+    </ol>
+    <ol className="hidden items-center gap-1.5 sm:flex">
       <li className="flex items-center gap-1.5">
         {/*
           `rel="author"` marks this as the identity edge, matching the footer
