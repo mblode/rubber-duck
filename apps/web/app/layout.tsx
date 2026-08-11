@@ -12,16 +12,39 @@ import {
   webPageId,
   websiteId,
 } from "@/lib/config";
+import { PAGE_UPDATED, TOOLS } from "@/lib/content";
 import { faqSchema } from "@/lib/faq";
+import { getLatestRelease } from "@/lib/release";
 import "./globals.css";
 
+/**
+ * Roman and italic are declared separately so only the roman is preloaded.
+ *
+ * `next/font` emits a `<link rel="preload">` for every face in a call, and
+ * `preload` is a per-call option, not per-face. Declared together, the italic
+ * was 103KB fetched at the highest priority to render zero glyphs — this page
+ * contains no emphasis at all — while competing for the same connection as the
+ * roman, which *is* the LCP font. Every LCP element on this fleet is text, so
+ * that contention is not theoretical.
+ *
+ * Deleting the italic outright would have been simpler and is the wrong trade:
+ * the browser then synthesises an oblique the first time anyone writes `<em>`,
+ * and faked italic is exactly the kind of defect the house type rules exist to
+ * stop. So it stays, real and drawn, one priority tier down — see the `em, i`
+ * rule in globals.css that binds it.
+ */
 const glide = localFont({
   display: "swap",
-  src: [
-    { path: "./fonts/glide-variable.woff2", style: "normal" },
-    { path: "./fonts/glide-variable-italic.woff2", style: "italic" },
-  ],
+  src: [{ path: "./fonts/glide-variable.woff2", style: "normal" }],
   variable: "--font-glide",
+  weight: "100 950",
+});
+
+const glideItalic = localFont({
+  display: "swap",
+  preload: false,
+  src: [{ path: "./fonts/glide-variable-italic.woff2", style: "italic" }],
+  variable: "--font-glide-italic",
   weight: "100 950",
 });
 
@@ -82,7 +105,17 @@ export const viewport: Viewport = {
  * The Person and WebSite nodes are blode.co's and are referenced by `@id`, not
  * redefined here. See the note on the ids in `lib/config.ts`.
  */
-const structuredData = {
+/**
+ * `featureList` is the seven tools the voice agent is actually given, taken
+ * from `apps/macos/Tools/ToolDefinitions.swift` and executed by
+ * `cli/src/daemon/voice-tools.ts`. It is not a keyword list: a feature named
+ * here that a reviewer cannot find in that dispatcher is a markup error, not a
+ * marketing decision. The rendered table on the page is built from the same
+ * seven, so the graph and the page cannot disagree about what this thing does.
+ */
+const FEATURE_LIST = TOOLS.rows.map((tool) => `${tool.name}: ${tool.does}`);
+
+const structuredData = (version: string) => ({
   "@context": "https://schema.org",
   "@graph": [
     {
@@ -90,6 +123,10 @@ const structuredData = {
       "@type": "WebPage",
       about: { "@id": appId },
       breadcrumb: { "@id": breadcrumbId },
+      // Hand-maintained in lib/content.ts and shared with the visible <time> in
+      // the closing section and with app/sitemap.ts. Deliberately not a build
+      // clock: "changed on every deploy" is not a freshness signal.
+      dateModified: PAGE_UPDATED,
       description: siteConfig.description,
       inLanguage: "en-US",
       isPartOf: { "@id": websiteId },
@@ -99,15 +136,21 @@ const structuredData = {
     {
       "@id": appId,
       "@type": "SoftwareApplication",
+      // Stays `DeveloperApplication`, unlike commandment, which was moved off
+      // it. That app types into Slack and Mail as readily as into an editor;
+      // this one takes a repo path and runs `grep`, so the category is right.
       applicationCategory: "DeveloperApplication",
       author: { "@id": personId },
       description: siteConfig.description,
+      downloadUrl: `${siteConfig.links.github}/releases/latest`,
+      featureList: FEATURE_LIST,
       // The generated OG card, not the 512px manifest icon. Google asks for at
       // least 1200px on the wide side, and the icon fell well under it. Same
       // source commandment, convene and moon already point at.
       image: `${siteConfig.url}/opengraph-image`,
       isAccessibleForFree: true,
       isPartOf: { "@id": websiteId },
+      license: `${siteConfig.links.github}/blob/main/LICENSE.md`,
       name: siteConfig.name,
       offers: {
         "@type": "Offer",
@@ -119,26 +162,40 @@ const structuredData = {
       },
       operatingSystem: "macOS 15.2",
       publisher: { "@id": orgId },
+      // Omitted rather than guessed when the GitHub API is unreachable. An
+      // absent property is honest; a stale one is a claim.
+      ...(version ? { softwareVersion: version } : {}),
       url: siteConfig.url,
     },
     breadcrumbSchema(),
     faqSchema(),
   ],
-};
+});
 
-export default function RootLayout({
+/**
+ * Async so the graph can publish the same `softwareVersion` the page renders.
+ * `getLatestRelease` is one `fetch` shared with `app/page.tsx` — identical
+ * arguments are deduplicated within a render pass and both read the same 3600s
+ * cache entry, so this is not a second request.
+ */
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { version } = await getLatestRelease();
+
   return (
-    <html className={`dark ${glide.variable} ${glideMono.variable}`} lang="en">
+    <html
+      className={`dark ${glide.variable} ${glideItalic.variable} ${glideMono.variable}`}
+      lang="en"
+    >
       <head>
         <link href={process.env.NEXT_PUBLIC_POSTHOG_HOST} rel="preconnect" />
       </head>
       <body className="antialiased">
         {children}
-        <JsonLd data={structuredData} />
+        <JsonLd data={structuredData(version)} />
         {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>

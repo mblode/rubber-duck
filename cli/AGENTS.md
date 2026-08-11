@@ -58,7 +58,7 @@ src/
     request-handler.ts      # Route daemon requests to business logic
     event-bus.ts            # Pub/sub: subscribe(clientId, sessionId, handler)
     health.ts               # 30s periodic Pi process liveness check
-    voice-tools.ts          # voice_tool_call handler: 6 tools executed in Node.js for Swift voice app
+    voice-tools.ts          # voice_tool_call handler: 7 tools executed in Node.js for Swift voice app
   renderer/
     index.ts                # Factory: createRenderer(options) → text or JSON
 colors.ts               # styleText wrappers respecting NO_COLOR

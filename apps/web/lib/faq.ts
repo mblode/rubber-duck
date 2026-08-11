@@ -1,7 +1,7 @@
 import { faqId, siteConfig, websiteId } from "@/lib/config";
 
 /**
- * One source for the FAQ, read by both the rendered accordion and the FAQPage
+ * One source for the FAQ, read by both the rendered section and the FAQPage
  * JSON-LD. Hand-writing the schema separately from the copy is how the two
  * drift apart, and the schema is the half nobody proofreads.
  */
@@ -10,8 +10,8 @@ export interface FaqEntry {
   /** Shell command shown under the answer, and appended to the schema answer. */
   code?: string;
   /**
-   * Anchor slug. Rendered as the `id` on the question's own `<details>`, so the
-   * URL in `acceptedAnswer.url` lands on something that exists and is visible
+   * Anchor slug. Rendered as the `id` on the question's own `<h3>`, so the URL
+   * in `acceptedAnswer.url` lands on something that exists and is visible
    * without opening anything. Hand-written rather than derived from the
    * question, so rewording a question cannot silently break an inbound link.
    */
@@ -19,51 +19,26 @@ export interface FaqEntry {
   question: string;
 }
 
+/** The two remaining pre-install objections: unprompted edits and connectivity. */
 export const faq: FaqEntry[] = [
   {
+    // The question the honest answer costs least on. Every hedge here reads as
+    // a hedge, and a reader who installs it and then finds `edit_file` for
+    // themselves stops believing the rest of the page.
+    //
+    // Shortened but not softened: safe mode is still named, and it is still off
+    // by default in the same sentence. The scoping clause went because the tool
+    // table says it two sections up, in stronger words.
     answer:
-      "It can open the files you are asking about. Point the duck command at a directory and the menu bar app switches to that workspace straight away. From there it reads files, greps the tree, finds files by name, runs commands, and makes edits.",
-    id: "vs-chat",
-    question: "How is this different from a chat window?",
+      "Yes. edit_file and write_file are real tools and there is no per-edit prompt: ask it to fix something and it fixes it, then tells you what it changed. Safe mode refuses both and is off by default. Keep the repo in git.",
+    id: "edits",
+    question: "Can it change my files without asking?",
   },
   {
     answer:
-      "Locally. The tools run through a small daemon over a Unix socket, so your own machine is what opens a file, not a remote sandbox. What the model asked for does go back to it as the tool result, the same as any other API call on your key.",
-    id: "code-access",
-    question: "Where does my code get read?",
-  },
-  {
-    answer:
-      "No. Audio goes to the OpenAI Realtime API at 24 kHz mono on your own key, kept in the macOS Keychain, and you pay for the minutes you talk.",
-    id: "subscription",
-    question: "Do I need a subscription?",
-  },
-  {
-    answer:
-      "The app still works, you just get the conversation without the tools. The command line half installs itself the first time you launch the app.",
-    id: "daemon",
-    question: "What if the daemon is not running?",
-  },
-  {
-    answer:
-      "Option+D activates the voice agent. Option+Shift+D opens Settings. Both rebind in Settings.",
-    id: "shortcuts",
-    question: "What are the shortcuts?",
-  },
-  {
-    answer:
-      "Download the DMG from the latest GitHub release, or install from the Homebrew tap. Requires macOS 15.2 or later.",
-    code: "brew install --cask mblode/tap/rubber-duck",
-    id: "install",
-    question: "How do I install it?",
-  },
-  // The identity question. Every zone carries one, so the answer to "who makes
-  // this" is on the page and in the graph rather than only in a footer credit.
-  {
-    answer:
-      "Rubber Duck is built by Matthew Blode, a product leader and engineer in Melbourne.",
-    id: "who",
-    question: "Who makes Rubber Duck?",
+      "No. The conversation runs through the OpenAI Realtime API, so it needs a connection. The tools run locally either way, but nothing decides which to call without a model.",
+    id: "offline",
+    question: "Does Rubber Duck work offline?",
   },
 ];
 
