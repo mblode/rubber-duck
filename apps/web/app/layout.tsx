@@ -13,7 +13,6 @@ import {
   websiteId,
 } from "@/lib/config";
 import { PAGE_UPDATED, TOOLS } from "@/lib/content";
-import { faqSchema } from "@/lib/faq";
 import { getLatestRelease } from "@/lib/release";
 import "./globals.css";
 
@@ -98,7 +97,7 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   colorScheme: "dark",
-  themeColor: "#1c1c1e",
+  themeColor: "#0d0d0f",
 };
 
 /*
@@ -168,7 +167,6 @@ const structuredData = (version: string) => ({
       url: siteConfig.url,
     },
     breadcrumbSchema(),
-    faqSchema(),
   ],
 });
 
@@ -187,11 +185,14 @@ export default async function RootLayout({
 
   return (
     <html
-      className={`dark ${glide.variable} ${glideItalic.variable} ${glideMono.variable}`}
+      className={`scheme-only-dark dark ${glide.variable} ${glideItalic.variable} ${glideMono.variable}`}
       lang="en"
     >
       <head>
-        <link href={process.env.NEXT_PUBLIC_POSTHOG_HOST} rel="preconnect" />
+        <link
+          href={process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://r.blode.co"}
+          rel="preconnect"
+        />
       </head>
       <body className="antialiased">
         {children}

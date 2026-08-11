@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
-const posthogOrigin = process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "";
+const posthogOrigin =
+  process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://r.blode.co";
 
 const contentSecurityPolicy = [
   "default-src 'self'",

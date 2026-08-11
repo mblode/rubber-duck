@@ -17,7 +17,7 @@ export const DownloadButton = ({
 }) => (
   <a
     className={cn(
-      "inline-flex items-center gap-[7px] rounded-lg bg-white px-4 py-2.5 font-semibold text-black text-sm hover:opacity-80 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-4 active:opacity-60",
+      "relative inline-flex min-h-12 items-center gap-2 rounded-full bg-duck py-3 pr-5 pl-4 font-semibold text-canvas hover:bg-[#ffd45f] focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-4 active:bg-duck-deep",
       className
     )}
     href={href}

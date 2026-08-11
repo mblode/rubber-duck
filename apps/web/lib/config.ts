@@ -1,7 +1,7 @@
 export const siteConfig = {
   author: "Matthew Blode",
   description:
-    "Rubber Duck is a macOS menu bar voice coding agent. Ask questions out loud, hear answers back, and understand unfamiliar code faster. Bring your own API key.",
+    "Ask about a repo out loud. Rubber Duck reads the code, answers back, and makes edits on your Mac.",
   links: {
     author: "https://blode.co",
     github: "https://github.com/mblode/rubber-duck",
@@ -9,7 +9,7 @@ export const siteConfig = {
   name: "Rubber Duck",
   // `Product: what it does`, under 60 characters so the SERP does not truncate
   // it. Colon, never a pipe or an em dash.
-  title: "Rubber Duck: talk through your code with AI",
+  title: "Rubber Duck: voice coding for macOS",
   url: "https://blode.co/rubber-duck",
 } as const;
 
@@ -32,7 +32,6 @@ export const orgId = `${host}/#organization`;
 
 // Zone-local nodes keep the zone in the id.
 export const appId = `${siteConfig.url}/#software`;
-export const faqId = `${siteConfig.url}/#faq`;
 export const webPageId = `${siteConfig.url}/#webpage`;
 export const breadcrumbId = `${siteConfig.url}/#breadcrumb`;
 

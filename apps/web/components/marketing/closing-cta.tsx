@@ -1,25 +1,7 @@
 import { DownloadButton } from "@/components/marketing/download-button";
-import { Reveal } from "@/components/ui/reveal";
-import { Container, Section } from "@/components/ui/section";
-import {
-  BREW_COMMAND,
-  CLOSING,
-  PAGE_UPDATED,
-  PAGE_UPDATED_LABEL,
-} from "@/lib/content";
+import { Container } from "@/components/ui/section";
+import { CLOSING, PAGE_UPDATED, PAGE_UPDATED_LABEL } from "@/lib/content";
 
-/**
- * The last thing on the page, and the same action as the first thing.
- *
- * One button, the same words as the hero. A reader who has got this far has read
- * the comparison and the FAQ; offering them a second, different next step here
- * is asking them to make the decision again.
- *
- * The `<time>` is the visible half of a freshness signal whose other half is
- * `WebPage.dateModified`. Both read `PAGE_UPDATED` from `lib/content.ts`, as does
- * `app/sitemap.ts`, so the date a reader sees and the date a crawler is told
- * cannot drift apart.
- */
 export const ClosingCta = ({
   downloadUrl,
   version,
@@ -27,29 +9,28 @@ export const ClosingCta = ({
   downloadUrl: string;
   version: string;
 }) => (
-  <Section className="border-white/5 border-t">
+  <section className="bg-duck py-20 text-canvas sm:py-24">
     <Container>
-      <Reveal>
-        <h2 className="max-w-[24ch] text-balance font-semibold text-3xl text-ink tracking-tight">
-          {CLOSING.heading}
-        </h2>
-        <p className="mt-4 max-w-[50ch] text-pretty text-ink-muted text-lg">
-          {CLOSING.lede}
-        </p>
-
-        <div className="mt-8">
-          <DownloadButton href={downloadUrl} />
+      <div className="flex flex-col items-start justify-between gap-10 lg:flex-row lg:items-end">
+        <div>
+          <h2 className="max-w-[22ch] text-balance font-medium text-4xl tracking-[-0.04em] sm:text-5xl">
+            {CLOSING.heading}
+          </h2>
+          <p className="mt-5 max-w-[44ch] text-pretty text-canvas/75 text-lg">
+            {CLOSING.lede}
+          </p>
         </div>
-
-        <code className="mt-4 block w-fit max-w-full overflow-x-auto rounded-lg bg-surface-1 px-3 py-2 font-mono text-ink-muted text-xs sm:text-sm">
-          {BREW_COMMAND}
-        </code>
-
-        <p className="mt-6 text-ink-faint text-sm">
-          {version ? `${version} · ` : ""}Requires macOS 15.2 · Last updated{" "}
-          <time dateTime={PAGE_UPDATED}>{PAGE_UPDATED_LABEL}</time>
-        </p>
-      </Reveal>
+        <div className="shrink-0">
+          <DownloadButton
+            className="bg-canvas text-ink hover:bg-surface-2 focus-visible:outline-canvas active:bg-surface-3"
+            href={downloadUrl}
+          />
+          <p className="mt-4 font-mono text-canvas/60 text-xs tabular-nums">
+            {version ? `${version} · ` : ""}macOS 15.2+ · Updated{" "}
+            <time dateTime={PAGE_UPDATED}>{PAGE_UPDATED_LABEL}</time>
+          </p>
+        </div>
+      </div>
     </Container>
-  </Section>
+  </section>
 );

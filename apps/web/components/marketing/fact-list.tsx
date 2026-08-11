@@ -1,12 +1,9 @@
-import { Reveal } from "@/components/ui/reveal";
 import { Container, Section, SectionHeading } from "@/components/ui/section";
 
 interface Fact {
   detail: string;
-  /** Where the reader checks it. Optional because a fact can be about the
-   * product without being about a file — every row that asserts something you
-   * could go and read in this repository carries one. */
-  href?: string;
+  href: string;
+  linkLabel: string;
   term: string;
 }
 
@@ -25,60 +22,36 @@ interface Fact {
  * check anything else on the page.
  */
 export const FactList = ({
-  closing,
   facts,
   heading,
   id,
 }: {
-  closing?: string;
   facts: readonly Fact[];
   heading: string;
   id?: string;
 }) => (
   <Section id={id}>
     <Container>
-      <Reveal>
-        <SectionHeading>{heading}</SectionHeading>
-        <dl className="mt-8 max-w-[72ch] divide-y divide-white/5 border-white/5 border-t">
-          {facts.map((fact) => (
-            <div
-              className="grid gap-1 py-4 sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)] sm:gap-6"
-              key={fact.term}
-            >
-              <dt className="font-medium text-ink text-sm">{fact.term}</dt>
-              <dd className="text-pretty text-ink-muted text-sm">
-                {fact.detail}
-                {fact.href ? (
-                  <>
-                    {" "}
-                    {/*
-                      Eight rows, eight links, and the visible text on all of
-                      them is "Check it" — fine in place, useless out of it. A
-                      screen reader user listing this page's links would get the
-                      same string eight times with nothing to choose between.
-                      The `aria-label` puts the row's own subject back into the
-                      accessible name while the visible text stays short enough
-                      not to break the sentence it sits in.
-                    */}
-                    <a
-                      aria-label={`Check it: ${fact.term.toLowerCase()}`}
-                      className="whitespace-nowrap text-ink underline decoration-white/25 underline-offset-4 hover:decoration-white/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-                      href={fact.href}
-                    >
-                      Check it
-                    </a>
-                  </>
-                ) : null}
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {closing ? (
-          <p className="mt-6 max-w-[60ch] text-pretty text-ink-faint text-sm">
-            {closing}
-          </p>
-        ) : null}
-      </Reveal>
+      <SectionHeading>{heading}</SectionHeading>
+      <dl className="mt-14 grid border-white/10 border-t md:grid-cols-2">
+        {facts.map((fact) => (
+          <div
+            className="border-white/10 border-b py-6 md:p-7 md:[&:nth-child(even)]:pr-0 md:[&:nth-child(odd)]:border-r md:[&:nth-child(odd)]:pl-0"
+            key={fact.term}
+          >
+            <dt className="font-mono text-duck text-sm">{fact.term}</dt>
+            <dd className="mt-4 max-w-[46ch] text-pretty text-ink-muted">
+              {fact.detail}{" "}
+              <a
+                className="whitespace-nowrap text-ink underline decoration-white/25 underline-offset-4 hover:decoration-white/60 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
+                href={fact.href}
+              >
+                {fact.linkLabel}
+              </a>
+            </dd>
+          </div>
+        ))}
+      </dl>
     </Container>
   </Section>
 );
