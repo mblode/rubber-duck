@@ -3,6 +3,8 @@ import {
   OG_SIZE,
   renderZoneOgImage,
 } from "@/app/og-image-shared";
+import { OgLogo } from "@/app/og-logo";
+
 import { siteConfig } from "@/lib/config";
 
 export const contentType = OG_CONTENT_TYPE;
@@ -15,9 +17,9 @@ export const alt = "Rubber Duck: voice coding for macOS";
  */
 export default function OpengraphImage() {
   return renderZoneOgImage({
-    badge: "RUBBER-DUCK",
-    eyebrow: "blode.co/rubber-duck",
-    subtitle: "Say the problem. Fix the code.",
+    background: "#0a0a0a",
+    color: "#ffffff",
+    logo: <OgLogo />,
     title: siteConfig.name,
   });
 }
