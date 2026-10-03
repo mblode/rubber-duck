@@ -9,7 +9,7 @@
     <language>en</language>
     <item>
       <title>Version 0.1.24</title>
-      <pubDate>Tue, 09 Jun 2026 02:03:39 +0000</pubDate>
+      <pubDate>Sat, 03 Oct 2026 08:36:39 +0000</pubDate>
       <link>https://github.com/mblode/rubber-duck/releases/tag/v0.1.24</link>
       <sparkle:version>0.1.24</sparkle:version>
       <sparkle:shortVersionString>0.1.24</sparkle:shortVersionString>
@@ -18,9 +18,9 @@
         url="https://github.com/mblode/rubber-duck/releases/download/v0.1.24/RubberDuck-0.1.24.dmg"
         sparkle:version="0.1.24"
         sparkle:shortVersionString="0.1.24"
-        sparkle:edSignature="KAOpzQ2LFSji0PiofB0X/l8ecdp8N6ZDmD2CZkxaUBzwrhSS/XYB8/H3/9BmCZQAYa2FYyCb7JM+iR/EF6M9CQ=="
+        sparkle:edSignature="7To8uLyL4xGs00HMKCkQlq314/piK+6ArUkiShj/KznhvtwtvJCH7zYtBp2U2MnsFV0AB9MU4vQby6pSC/WEBA=="
         type="application/octet-stream"
-        length="2607043" />
+        length="2607147" />
     </item>
   </channel>
 </rss>
