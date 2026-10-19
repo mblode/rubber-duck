@@ -72,6 +72,9 @@ if (!isLocalHost()) {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://r.blode.co",
     before_send: (event) => {
       if (event && isNoisyException(event)) return null;
+      if (event) {
+        event.properties.project = "rubber-duck";
+      }
       return event;
     },
     defaults: "2026-05-30",
